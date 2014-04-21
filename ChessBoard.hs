@@ -20,6 +20,8 @@ type Map = M.Map Index Piece
 type Update = (Index,Maybe (Colour,Piece))
 data Board = Board{ white::Map, black::Map }
 
+instance Show Board where show = const "Board"
+
 (!) = get
 (//) = update
 

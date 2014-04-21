@@ -16,9 +16,6 @@ showRank (R n) = chr ((ord '1') + n - 1)
 showFile :: File -> Char
 showFile (F n) = chr ((ord 'a') + n - 1)
 
-instance Show Rank where show = return . showRank
-instance Show File where show = return . showFile
-
 --------------------------------------------------------------------------------
 showPiece :: Piece -> Char
 showPiece p = case p of

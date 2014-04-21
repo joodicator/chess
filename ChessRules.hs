@@ -3,6 +3,7 @@ module ChessRules where
 
 import Control.Monad
 import Control.Applicative
+import Data.Maybe
 
 import ChessData
 import ChessBoard
@@ -23,10 +24,6 @@ initialBoard = readBoardLines [
 
 initialGame :: Game
 initialGame = Game{gBoard=initialBoard, gTurn=White, gMoves=[]}
-
---------------------------------------------------------------------------------
-inCheck :: Colour -> Board -> Bool
-inCheck = undefined
 
 --------------------------------------------------------------------------------
 doMove :: Move -> Board -> Board
@@ -58,6 +55,11 @@ undoMove' m board = case m of
     free i mp    = (\(c,_) p -> (oppose c,p)) <$> board!i <*> mp
 
 --------------------------------------------------------------------------------
+inCheck :: Colour -> Board -> Bool
+inCheck pc board = False
+
+--------------------------------------------------------------------------------
+-- Succeeds with the move specified by (t,mpp) iff it is legal in this game.
 tryMove :: (Path, Maybe Promotion) -> Game -> Maybe Move
 tryMove (t@(i,j),mpp) game@Game{gBoard=board, gTurn=pc} = do
     (ic,ip) <- board!i
@@ -66,7 +68,8 @@ tryMove (t@(i,j),mpp) game@Game{gBoard=board, gTurn=pc} = do
     guard (not $ inCheck pc $ doMove move board)
     return move
 
--- Pre: board!i==Just(pc,ip) where (i,j)=t
+-- Pre: board!i==Just(pc,ip) where (i,j)=t -------------------------------------
+-- Gives a legal move, ignoring pawn promotion and check.
 tryMove' :: (Piece, Path) -> Game -> Maybe Move
 tryMove' (ip,t) g@Game{gBoard=board, gTurn=pc} = case ip of
     Pawn | (rd `div` up) `elem` [1,2] && fd==0 ->
@@ -83,30 +86,51 @@ tryMove' (ip,t) g@Game{gBoard=board, gTurn=pc} = case ip of
         trySlide' t g >> tryMaybeCapture' t g
     King | max (abs rd) (abs fd) == 1 ->
         tryJustMove' t g <|> tryCastle' t g
+    _ -> Nothing
   where
     ((R ri,F fi),(R rj,F fj)) = t
     (rd, fd) = (rj-ri, fj-fi)
     up = case pc of White -> 1; Black -> -1    
-    
-trySlide' :: Path -> Game -> Maybe Move
-trySlide' = undefined
 
+-- Succeeds iff the squares strictly between i and j are all empty. ------------
+trySlide' :: Path -> Game -> Maybe ()
+trySlide' (i@(ri,fi), j@(rj,fj)) Game{gBoard=board}
+  = mapM_ (guard . isNothing . (board !)) path
+  where
+    (rd,fd) = (signum (rj-ri), signum (fj-fi))
+    path = takeWhile (/=j) $ drop 1 $ iterate (\(r,f) -> (r+rd, f+fd)) i
+
+-- Jumps from i to j, if j is empty. -------------------------------------------
 tryJustMove' :: Path -> Game -> Maybe Move
-tryJustMove' = undefined
+tryJustMove' t@(i,j) Game{gBoard=d, gTurn=pc} = case d!j of
+    Nothing -> Just Move{mPath=t, mCapture=Nothing}
+    _       -> Nothing
 
+-- Jumps from i to j, if j holds an opponent's piece. --------------------------
 tryJustCapture' :: Path -> Game -> Maybe Move
-tryJustCapture' = undefined
+tryJustCapture' t@(_,j) Game{gBoard=d, gTurn=pc} = case d!j of
+    Just (jc,jp) | jc/=pc -> Just Move{mPath=t, mCapture=Just jp}
+    _                     -> Nothing
 
+-- Jumps from i to j, if it is empty or holds an opponent's piece. -------------
 tryMaybeCapture' :: Path -> Game -> Maybe Move
-tryMaybeCapture' = undefined
+tryMaybeCapture' t g
+  = tryJustMove' t g <|> tryJustCapture' t g
 
+-- Pre: board!i==(pc,Pawn) where Game{gBoard=board,gTurn=pc}=game --------------
+-- Performs an /en passant/ capture, if legal (ignoring check).
 tryPassant' :: Path -> Game -> Maybe Move
-tryPassant' = undefined
+tryPassant' (i,j) game = Nothing
 
+-- Pre: board!i==(pc,King) where Game{gBoard=board,gTurn=pc}=game --------------
+-- Performs a castling move, if legal (ignoring check)
 tryCastle' :: Path -> Game -> Maybe Move
-tryCastle' = undefined
+tryCastle' (i,j) game = Nothing
 
--- Pre: (gBoard g)!i==(pc,ip) where (i,j)=mPath move
+
+-- Pre: (gBoard g)!i==(pc,ip) where (i,j)=mPath move ---------------------------
+-- Given a legal move ignoring pawn promotion and check, produces
+-- a legal move obeying pawn promotion and ignoring check.
 tryPromote' :: (Piece, Maybe Promotion) -> Game -> Move -> Maybe Move
 tryPromote' (ip,mpp) g@Game{gTurn=pc} move = case (ip,mpp,move) of
     (Pawn, Nothing, Move{mPath=t}) -> do
