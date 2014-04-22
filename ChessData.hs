@@ -10,8 +10,11 @@ import Data.Monoid
 import {-# SOURCE #-} ChessBoard(Board)
 
 --------------------------------------------------------------------------------
-newtype Rank = R Int deriving (Eq, Ord, Num, Show)
-newtype File = F Int deriving (Eq, Ord, Num, Show)
+newtype Rank = R{unR::Int} deriving (Eq, Ord, Num, Enum, Real, Integral)
+newtype File = F{unF::Int} deriving (Eq, Ord, Num, Enum, Real, Integral)
+
+instance Show Rank where show = show . unR
+instance Show File where show = show . unF
 
 type Index = (Rank,File)
 type Path = (Index,Index)
@@ -21,6 +24,9 @@ files = map F [1..8] :: [File]
 
 rank = fst :: Index -> Rank
 file = snd :: Index -> File
+
+inBoard :: Index -> Bool
+inBoard (r,f) = r `elem` ranks && f `elem` files
 
 --------------------------------------------------------------------------------
 data Colour
@@ -40,8 +46,8 @@ type Promotion = Piece
 data Move
   = Move    { mPath::Path, mCapture::Maybe Piece }
   | Promote { mPath::Path, mCapture::Maybe Piece, mPromote::Promotion }
-  | Passant { mPath::Path }
   | Castle  { mKing::Path, mRook::Path }
+  | Passant { mPath::Path }
   deriving Show
 
 data Game

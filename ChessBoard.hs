@@ -1,15 +1,7 @@
 module ChessBoard(
-    Board,
-    Update,
-    (!),
-    (//),
-    empty,
-    get,
-    put,
-    list,
-    listAll,
-    fromList,
-    update
+    Board,          Update,     (!),        (//),
+    empty,          get,        put,        list,
+    listAll,        fromList,   update,     indices
 ) where
 
 import qualified Data.Map.Strict as M
@@ -54,3 +46,6 @@ fromList = update empty
 
 update :: Board -> [(Index,Maybe (Colour,Piece))] -> Board
 update = foldl' (uncurry . put)
+
+indices :: Board -> (Colour,Piece) -> [Index]
+indices d (c,p) = [i | (i,(_,p')) <- list c d, p==p']
