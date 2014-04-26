@@ -188,7 +188,7 @@ readPiece c = case toUpper c of
 showEmptySquare :: Index -> Char
 showEmptySquare p
   = case squareColour p of
-      Black -> ','
+      Black -> '+'
       White -> '.'
 
 showColourPiece :: (Colour,Piece) -> Char
@@ -214,8 +214,8 @@ readBoard = readBoardLines . lines
 
 readBoardLines :: [String] -> Board
 readBoardLines lines = fromList $ do
-    (r,line) <- zip (reverse ranks) lines
-    (f,char) <- zip files (filter (/= ' ') line)
+    (r,line) <- zip (reverse ranks) (drop 1 lines)
+    (f,char) <- zip files (filter (/= ' ') (drop 1 line))
     return ((r,f), readSquare char)
 
 --------------------------------------------------------------------------------
@@ -227,10 +227,11 @@ printBoard = mapM_ putStrLn . showBoardLines
 
 showBoardLines :: Board -> [String]
 showBoardLines b
-  = map (intersperse ' ') $ map rankRow (reverse ranks) ++ [lastRow]
+  = map (intersperse ' ') $ fileRow : map rankRow (reverse ranks) ++ [fileRow]
   where
-    rankRow r = [showSquare (r,f) (b ! (r,f)) | f <- files] ++ [showRank r]
-    lastRow = map showFile files
+    rankRow r  = [showRank r] ++ rankRow' r ++ [showRank r]
+    rankRow' r = [showSquare (r,f) (b ! (r,f)) | f <- files]
+    fileRow    = ' ' : map showFile files
 
 showLegendLines :: Int -> [String]
 showLegendLines n

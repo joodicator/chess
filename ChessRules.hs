@@ -12,15 +12,16 @@ import {-# SOURCE #-} ChessText
 --------------------------------------------------------------------------------
 initialBoard :: Board
 initialBoard = readBoardLines [
-    "R N L Q K L N R 8",
-    "P P P P P P P P 7",
-    ". , . , . , . , 6",
-    ", . , . , . , . 5",
-    ". , . , . , . , 4",
-    ", . , . , . , . 3",
-    "p p p p p p p p 2",
-    "r n l q k l n r 1",
-    "a b c d e f g h  "]
+    "  a b c d e f g h  ",
+    "8 R N L Q K L N R 8",
+    "7 P P P P P P P P 7",
+    "6 , . , . , . , . 6",
+    "5 . , . , . , . , 5",
+    "4 , . , . , . , . 4",
+    "3 . , . , . , . , 3",
+    "2 p p p p p p p p 2",
+    "1 r n l q k l n r 1",
+    "  a b c d e f g h  "]
 
 initialGame :: Game
 initialGame = Game{gBoard=initialBoard, gTurn=White, gMoves=[]}
@@ -248,7 +249,7 @@ couldCapture' s d = couldMoveOrCapture' s d || couldOnlyCapture' s d
 -- ignoring turn order, castling, en passant and check.
 couldOnlyMove' :: (Colour,Piece,Path) -> Board -> Bool
 couldOnlyMove' (c,p,t@((ri,fi),(rj,fj))) d = case p of
-    Pawn -> fj==fi && (rj==ri+rf || (ri,rj)==(rb+1,ri+2*rf)) && couldSlide t d
+    Pawn -> fj==fi && (rj==ri+rf || (ri,rj)==(rb+rf,ri+2*rf)) && couldSlide t d
     _    -> False
   where (rb,rt,rf) = (base c, top c, fore c)
 
