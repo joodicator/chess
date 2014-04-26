@@ -51,6 +51,7 @@ data Piece
   deriving (Eq, Enum, Bounded, Show)
 
 type Promotion = Piece
+type MoveSpec = (Path, Maybe Promotion)
 
 data Move
   = Move    { mPath::Path, mCapture::Maybe Piece }

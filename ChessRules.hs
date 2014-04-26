@@ -57,7 +57,7 @@ doMoveGame m g@Game{gBoard=d, gTurn=pc, gMoves=ms}
 
 undoMoveGame :: Game -> Maybe Game
 undoMoveGame g@Game{gBoard=d, gTurn=pc, gMoves=ms} = do
-    m:ms' <- ms
+    m:ms' <- return ms
     return g{gBoard=undoMoveBoard m d, gTurn=oppose pc, gMoves=ms'}    
 
 --------------------------------------------------------------------------------
@@ -105,11 +105,11 @@ legalMoves g@Game{gTurn=c, gBoard=d}
   = catMaybes [tryMove s g | s <- maybeMoves d c]
 
 -- A superset of the moves that player c may legally make on board d.
-maybeMoves :: Board -> Colour -> [(Path,Maybe Promotion)]
+maybeMoves :: Board -> Colour -> [MoveSpec]
 maybeMoves d c = concatMap (maybeMovesFrom' d) (list c d)
 
 -- Pre: d!i==Just(c,p) ---------------------------------------------------------
-maybeMovesFrom' :: Board -> (Index,(Colour,Piece)) -> [(Path,Maybe Promotion)]
+maybeMovesFrom' :: Board -> (Index,(Colour,Piece)) -> [MoveSpec]
 maybeMovesFrom' d (i@(ri,fi),(c,p)) = case p of
     Pawn ->
         let (rb,rt,rf) = (base c,top c,fore c) in
@@ -144,7 +144,7 @@ attacks d c j = or [couldCapture' (c,p,(i,j)) d | (i,(c,p)) <- list c d]
 
 --------------------------------------------------------------------------------
 -- Succeeds with the move specified by (t,mpp) iff it is legal in this game.
-tryMove :: (Path,Maybe Promotion) -> Game -> Maybe Move
+tryMove :: MoveSpec -> Game -> Maybe Move
 tryMove (t@(i,j),mpp) g@Game{gBoard=d, gTurn=pc} = do
     guard (inBoard i && inBoard j)
     (ic,ip) <- d!i; guard (ic==pc)
@@ -182,49 +182,70 @@ trySpecialMove' :: (Piece,Path) -> Game -> Maybe Move
 trySpecialMove' s g = tryCastle' s g <|> tryPassant' s g
 
 -- Pre: d!i==Just(pc,ip) --------------------------------------------------------
--- A legal castling move
+-- A legal castling move.
 tryCastle' :: (Piece,Path) -> Game -> Maybe Move
-tryCastle' (ip,t) g@Game{gBoard=d, gTurn=pc, gMoves=ms} = do
-    guard (ip==King && ri==rj && abs(fj-fi)==2)
-    (ic',Rook) <- d!i'; guard (ic'==pc)
+tryCastle' (ip,t@(i,j)) g@Game{gBoard=d, gTurn=pc, gMoves=ms} = do
+    t'@(i',j') <- tryCastle'' (pc,ip,t) d
     guard (null (pastMoves i ms) && null (pastMoves i' ms))
-    guard (couldSlide (i,i') d)    
-    mapM_ (guard . not . attacks d (oppose pc)) [i,j',j]
     return Castle{mKing=t, mRook=t'}
+
+-- Pre: d!i==Just(ic,ip) -------------------------------------------------------
+-- The rook's path in a legal castling move corresponding to this king's path,
+-- ignoring turn order and the condition on previous moves.
+tryCastle'' :: (Colour,Piece,Path) -> Board -> Maybe Path
+tryCastle'' (ic,ip,t) d = do
+    guard (ip==King && ri==rj && abs(fj-fi)==2)
+    (kc,King) <- initialBoard!i; guard (kc==ic)
+    (ic',Rook) <- d!i'; guard (ic'==ic)
+    guard (couldSlide (i,i') d)    
+    mapM_ (guard . not . attacks d (oppose ic)) [i,j',j]
+    return t'
   where
     (i@(ri,fi),j@(rj,fj)) = t
     t'@(i',j') = ((ri,(if fj<fi then head else last) files),(ri,(fi+fj)`div`2))
 
 -- Pre: d!i==Just(pc,ip) -------------------------------------------------------
--- A legal en passant capture, ignoring check and pawn promotion
+-- A legal en passant capture, ignoring check.
 tryPassant' :: (Piece,Path) -> Game -> Maybe Move
 tryPassant' (ip,t) Game{gBoard=d, gTurn=pc, gMoves=ms} = do
-    guard (ip==Pawn && rj==ri+fore pc && abs(fj-fi)==1)
-    (jc',Pawn) <- d!j'; guard (jc'/=pc)
+    t'@(i',j')      <- tryPassant'' (pc,ip,t) d
     Move{mPath=t''} <- listToMaybe ms; guard (t''==t')
     return Passant{mPath=t}
-  where
-    (i@(ri,fi),j@(rj,fj)) = t
-    t'@(i',j') = ((rj+fore pc,fj),(rj-fore pc,fj))
 
--- Pre: d!i==Just(ic,ip) where (ic,ip,(i,j))=s ---------------------------------
--- True iff moving from i to j would be legal if j were empty OR if it contained
--- an opponent's piece, or both, ignoring en passant, turn order and check.
+-- Pre: d!i==Just(ic,ip) -------------------------------------------------------
+-- The target pawn's previous path in a legal en passant move, ignoring
+-- turn order, check and the condition on the target's previous movement.
+tryPassant'' :: (Colour,Piece,Path) -> Board -> Maybe Path
+tryPassant'' (ic,ip,(i@(ri,fi),j@(rj,fj))) d = do
+    guard (ip==Pawn && rj==ri+fore ic && abs(fj-fi)==1)
+    guard (isNothing (d!j) && rj==top ic-2)
+    let t'@(i',j') = ((rj+fore ic,fj),(rj-fore ic,fj))
+    (jc',Pawn) <- d!j'; guard (jc'/=ic)
+    return t'
+
+-- Pre: d!i==Just(c,p) ---------------------------------------------------------
+-- True iff a move from i to j is legal, ignoring turn order, check, and the
+-- conditions on previous moves for en passant and castling moves.
 couldMove' :: (Colour,Piece,Path) -> Board -> Bool
-couldMove' s d
-  = couldMoveAndCapture' s d || couldOnlyMove' s d || couldOnlyCapture' s d
+couldMove' s@(c,p,(i,j)) d
+  = isJust (tryBasicMove' s d) ||
+    isJust (tryPassant'' s d) || isJust (tryCastle'' s d)
 
 -- Pre: d!i==Just(ic,ip) where (ic,ip,(i,j))=s ---------------------------------
+-- True iff a move from i to j would be legal if j were empty,
+-- ignoring turn order, castling, en passant and check.
 couldJustMove' :: (Colour,Piece,Path) -> Board -> Bool
-couldJustMove' s d = couldMoveAndCapture' s d || couldOnlyMove' s d
+couldJustMove' s d = couldMoveOrCapture' s d || couldOnlyMove' s d
 
 -- Pre: d!i==Just(ic,ip) where (ic,ip,(i,j))=s ---------------------------------
+-- True iff a move from i to j would be legal if j contained an opponent's
+-- piece, ignoring turn order and check.
 couldCapture' :: (Colour,Piece,Path) -> Board -> Bool
-couldCapture' s d = couldMoveAndCapture' s d || couldOnlyCapture' s d
+couldCapture' s d = couldMoveOrCapture' s d || couldOnlyCapture' s d
 
 -- Pre: d!i==Just(ic,ip) -------------------------------------------------------
 -- True iff moving from i to j would be legal ONLY if j were empty,
--- ignoring turn order, en passant and check.
+-- ignoring turn order, castling, en passant and check.
 couldOnlyMove' :: (Colour,Piece,Path) -> Board -> Bool
 couldOnlyMove' (c,p,t@((ri,fi),(rj,fj))) d = case p of
     Pawn -> fj==fi && (rj==ri+rf || (ri,rj)==(rb+1,ri+2*rf)) && couldSlide t d
@@ -242,8 +263,8 @@ couldOnlyCapture' s@(ic,ip,t@((ri,fi),(rj,fj))) d = case ip of
 -- Pre: d!i==Just(c,p) ---------------------------------------------------------
 -- True iff moving from i to j would be legal if j were empty AND if it
 -- contained an opponent's piece, ignoring turn order and check.
-couldMoveAndCapture' :: (Colour,Piece,Path) -> Board -> Bool
-couldMoveAndCapture' (c,p,t@((ri,fi),(rj,fj))) d = case p of
+couldMoveOrCapture' :: (Colour,Piece,Path) -> Board -> Bool
+couldMoveOrCapture' (c,p,t@((ri,fi),(rj,fj))) d = case p of
     Pawn   -> False
     Knight -> (abs rd,abs fd) `elem` [(1,2),(2,1)]
     Rook   -> (rd==0 || fd==0) && couldSlide t d
