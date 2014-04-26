@@ -30,8 +30,8 @@ promotions = [Rook, Knight, Bishop, Queen]
 
 --------------------------------------------------------------------------------
 base :: Colour -> Rank
-base Black = head ranks
-base White = last ranks
+base White = head ranks
+base Black = last ranks
 
 top :: Colour -> Rank
 top = base . oppose
@@ -80,15 +80,58 @@ undoMove' m board = case m of
     free i mp    = (\(c,_) p -> (oppose c,p)) <$> board!i <*> mp
 
 --------------------------------------------------------------------------------
--- c is in check.
-inCheck :: Board -> Colour -> Bool
-inCheck d c
-  = any (attacks d (oppose c)) (indices d (c,King))
+result :: Game -> Maybe Result
+result g@Game{gTurn=c}
+  | canMove g = Nothing
+  | inCheck g = Just Checkmate{rWinner=oppose c}
+  | otherwise = Just Stalemate
 
--- j is under attack by a piece belonging to ic.
+-- True iff it is possible for the current player to make a legal move.
+canMove :: Game -> Bool
+canMove = not . null . legalMoves
+
+-- Exactly the moves that the current player may legally make.
+legalMoves :: Game -> [Move]
+legalMoves g@Game{gTurn=c, gBoard=d}
+  = catMaybes [tryMove s g | s <- maybeMoves d c]
+
+-- A superset of the moves that player c may legally make on board d.
+maybeMoves :: Board -> Colour -> [(Path,Maybe Promotion)]
+maybeMoves d c = concatMap (maybeMovesFrom' d) (list c d)
+
+-- Pre: d!i==Just(c,p) ---------------------------------------------------------
+maybeMovesFrom' :: Board -> (Index,(Colour,Piece)) -> [(Path,Maybe Promotion)]
+maybeMovesFrom' d (i@(ri,fi),(c,p)) = case p of
+    Pawn ->
+        let (rb,rt,rf) = (base c,top c,fore c) in
+        [(,) (i,(ri+2*rf,fi))  Nothing] <|>
+        [(,) (i,(ri+rf,fi+fd)) Nothing | fd <- [-1,0,1]] <|>
+        [(,) (i,(ri+rf,fi))    (Just pp) | pp <- promotions]
+    Knight -> do
+        (rd,fd) <- [(1,2),(2,1)]; rs <- [-1,1]; fs <- [-1,1]
+        return $ (,) (i,(ri+rd*rs,fi+fd*fs)) Nothing
+    King -> do
+        rd <- [-1,0,1]; fd <- if rd==0 then [-3,-1,1,3] else [-1,0,1]
+        return $ (,) (i,(ri+rd,fi+fd)) Nothing
+    _ -> do
+        rd <- [-1,0,1]; fd <- if rd==0 then [-1,1] else [-1,0,1]
+        guard (p/=Rook || rd==0 || fd==0)
+        guard (p/=Bishop || rd+fd==0 || rd-fd==0)
+        let js = tail $ iterate (\(r,f) -> (r+R rd,f+F fd)) i
+        let (js',js'') = span (\j -> isNothing (d!j) && inBoard j) js
+        [(,) (i,j) Nothing | j <- js' ++ take 1 js'']
+
+-- True iff the current player is in check. ------------------------------------
+inCheck :: Game -> Bool
+inCheck Game{gTurn=c, gBoard=d} = inCheck' d c
+
+inCheck' :: Board -> Colour -> Bool
+inCheck' d c = any (attacks d (oppose c)) (indices d (c,King))
+
+-- True iff any piece belonging to c would be able to capture an opponent's ----
+-- piece at j if one were present, ignoring turn order, en passant and check.
 attacks :: Board -> Colour -> Index -> Bool
-attacks d ic j
-  = any isJust [tryBasicMove (i,j) d | (i,_) <- list ic d]
+attacks d c j = or [couldCapture' (c,p,(i,j)) d | (i,(c,p)) <- list c d]
 
 --------------------------------------------------------------------------------
 -- Succeeds with the move specified by (t,mpp) iff it is legal in this game.
@@ -98,41 +141,19 @@ tryMove (t@(i,j),mpp) g@Game{gBoard=d, gTurn=pc} = do
     (ic,ip) <- d!i; guard (ic==pc)
     m <- tryBasicMove' (ic,ip,t) d <|> trySpecialMove' (ip,t) g
     m <- tryPromote' (ic,ip,mpp) m
-    guard (not $ inCheck (doMove m d) pc)
+    guard (not $ inCheck' (doMove m d) pc)
     return m
 
--- A legal move, ignoring en passant, pawn promotion, turn order and check. ----
-tryBasicMove :: Path -> Board -> Maybe Move
-tryBasicMove t@(i,j) d = do
-    (ic,ip) <- d!i
-    tryBasicMove' (ic,ip,t)
-
--- Pre: d!(ri,fi)==Just(ic,ip) -------------------------------------------------
--- A legal move, ignoring en passant, pawn promotion, turn order and check.
+-- A legal move, ignoring en passant, pawn promotion, turn order and check -----
+-- Pre: d!(ri,fi)==Just(ic,ip)
 tryBasicMove' :: (Colour,Piece,Path) -> Board -> Maybe Move
-tryBasicMove' s@(ic,ip,t@((ri,fi),(rj,fj))) d = case ip of
-    Pawn ->
-        (guard (rj==ri+1*fore ic && fj==fi) >>
-         tryJustMove' s d) <|>
-        (guard (rj==ri+2*fore ic && fj==fi && ri==1+base ic) >>
-         trySlide t d >> tryJustMove' s d) <|>
-        (guard (rj==ri+1*fore ic && abs(fj-fi)==1) >>
-         tryJustCapture' s d)
-    Knight ->
-        guard ((abs$rj-ri,abs$fj-fi)`elem`[(1,2),(2,1)]) >>
-        tryMaybeCapture' s d
-    Rook ->
-        guard (rj==ri || fj==fi) >>
-        trySlide t d >> tryMaybeCapture' s d
-    Bishop ->
-        guard (abs(unR$rj-ri)==abs(unF$fj-fi)) >>
-        trySlide t d >> tryMaybeCapture' s d
-    Queen ->
-        guard (rj==ri || fj==fi || abs(unR$rj-ri)==abs(unF$fj-fi)) >>
-        trySlide t d >> tryMaybeCapture' s d
-    King ->
-        guard (abs(rj-ri)<=1 && abs(fj-fi)<= 1) >>
-        tryMaybeCapture' s d
+tryBasicMove' s@(ic,ip,t@(i,j)) d = case d!j of
+    Nothing -> do
+        guard (couldJustMove' s d)
+        return Move{mPath=t, mCapture=Nothing}
+    Just (jc,jp) -> do
+        guard (jc/=ic && couldCapture' s d)
+        return Move{mPath=t, mCapture=Just jp}
 
 -- Pre: d!i==Just(ic,ip) -------------------------------------------------------
 -- Given a legal move ignoring pawn promotion and check, produces
@@ -158,7 +179,7 @@ tryCastle' (ip,t) g@Game{gBoard=d, gTurn=pc, gMoves=ms} = do
     guard (ip==King && ri==rj && abs(fj-fi)==2)
     (ic',Rook) <- d!i'; guard (ic'==pc)
     guard (null (pastMoves i ms) && null (pastMoves i' ms))
-    trySlide (i,i') d
+    guard (couldSlide (i,i') d)    
     mapM_ (guard . not . attacks d (oppose pc)) [i,j',j]
     return Castle{mKing=t, mRook=t'}
   where
@@ -171,34 +192,40 @@ tryPassant' :: (Piece,Path) -> Game -> Maybe Move
 tryPassant' (ip,t) Game{gBoard=d, gTurn=pc, gMoves=ms} = do
     guard (ip==Pawn && rj==ri+fore pc && abs(fj-fi)==1)
     (jc',Pawn) <- d!j'; guard (jc'/=pc)
-    Move{mPath=t''} <- listToMaybe' ms; guard (t''==t')
+    Move{mPath=t''} <- listToMaybe ms; guard (t''==t')
     return Passant{mPath=t}
   where
     (i@(ri,fi),j@(rj,fj)) = t
     t'@(i',j') = ((rj+fore pc,fj),(rj-fore pc,fj))
 
--- Succeeds iff the squares strictly between i and j are all empty. ------------
-trySlide :: Path -> Board -> Maybe ()
-trySlide (i@(ri,fi), j@(rj,fj)) board
-  = mapM_ (guard . isNothing . (board !)) path
+-- Pre: d!i==Just(ic,ip) -------------------------------------------------------
+-- True iff moving from i to j would be legal if j were empty,
+-- ignoring turn order, en passant and check.
+couldJustMove' :: (Colour,Piece,Path) -> Board -> Bool
+couldJustMove' (c,p,t@((ri,fi),(rj,fj))) d = case p of
+    Pawn   -> fj==fi && (rj==ri+rf || (ri,rj)==(rb+1,ri+2*rf)) && couldSlide t d
+    Knight -> (abs rd,abs fd) `elem` [(1,2),(2,1)]
+    Rook   -> (rd==0 || fd==0) && couldSlide t d
+    Bishop -> (rd-fd==0 || rd+fd==0) && couldSlide t d
+    Queen  -> (rd==0 || fd==0 || rd+fd==0 || rd-fd==0) && couldSlide t d
+    King   -> abs rd < 2 && abs fd < 2
+  where
+    (rd,fd)    = (unR(rj-ri), unF(fj-fi))
+    (rb,rt,rf) = (base c, top c, fore c)
+
+
+-- Pre: d!i==Just(ic,ip) -------------------------------------------------------
+-- True iff moving from i to j would be legal if an opponent's piece were at 
+-- ignoring turn order and check. couldCapture :: Path -> Board -> Boolean 
+couldCapture' :: (Colour,Piece,Path) -> Board -> Bool
+couldCapture' s@(ic,ip,t@((ri,fi),(rj,fj))) d = case ip of
+    Pawn -> rj==ri+1*fore ic && abs(fj-fi)==1
+    _    -> couldJustMove' s d
+
+-- True iff every square strictly between i and j is empty ---------------------
+couldSlide :: Path -> Board -> Bool
+couldSlide (i@(ri,fi),j@(rj,fj)) d
+  = all (isNothing . (d !)) path
   where
     (rd,fd) = (signum (rj-ri), signum (fj-fi))
-    path = takeWhile (/=j) $ drop 1 $ iterate (\(r,f) -> (r+rd, f+fd)) i
-
--- Pre: d!i==Just(ic,_) where (ic,_,(i,j))=s -----------------------------------
--- Jumps from i to j, if j is empty or holds an opponent's piece.
-tryMaybeCapture' :: (Colour,Piece,Path) -> Board -> Maybe Move
-tryMaybeCapture' s d = tryJustMove' s d <|> tryJustCapture' s d
-
--- Jumps from i to j, if j is empty. -------------------------------------------
-tryJustMove' :: (Colour,Piece,Path) -> Board -> Maybe Move
-tryJustMove' (_,_,t@(i,j)) d = do
-    guard (isNothing $ d!j)
-    return Move{mPath=t, mCapture=Nothing}
-
--- Pre: d!i==Just(ic,_) where (i,j)=t ------------------------------------------
--- Jumps from i to j, if j holds an opponent's piece, capturing it
-tryJustCapture' :: (Colour,Piece,Path) -> Board -> Maybe Move
-tryJustCapture' (ic,_,t@(_,j)) d = do
-    (jc,jp) <- d!j; guard (jc/=ic)
-    return Move{mPath=t, mCapture=Just jp}
+    path = takeWhile (/=j) $ tail $ iterate (\(r,f) -> (r+rd, f+fd)) i

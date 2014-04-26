@@ -74,6 +74,9 @@ readBoardLines lines = B.fromList $ do
 showBoard :: Board -> String
 showBoard = unlines . showBoardLines
 
+printBoard :: Board -> IO ()
+printBoard = mapM_ putStrLn . showBoardLines
+
 showBoardLines :: Board -> [String]
 showBoardLines b
   = map (intersperse ' ') $ map rankRow (reverse ranks) ++ [lastRow]

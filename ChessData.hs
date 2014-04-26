@@ -28,6 +28,10 @@ file = snd :: Index -> File
 inBoard :: Index -> Bool
 inBoard (r,f) = r `elem` ranks && f `elem` files
 
+squareColour :: Index -> Colour
+squareColour (R r, F f)
+  | odd (r+f) = Black
+  | otherwise = White
 --------------------------------------------------------------------------------
 data Colour
   = White | Black
@@ -36,6 +40,10 @@ data Colour
 oppose :: Colour -> Colour
 oppose White = Black
 oppose Black = White
+
+data Result
+  = Checkmate{ rWinner::Colour } | Stalemate
+  deriving (Eq, Show)
 
 data Piece
   = Pawn | Rook | Knight | Bishop | Queen | King
@@ -53,9 +61,3 @@ data Move
 data Game
   = Game{ gBoard::Board, gTurn::Colour, gMoves::[Move] }
   deriving Show
-
---------------------------------------------------------------------------------
-squareColour :: Index -> Colour
-squareColour (R r, F f)
-  | odd (r+f) = Black
-  | otherwise = White
