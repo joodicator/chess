@@ -32,6 +32,7 @@ squareColour :: Index -> Colour
 squareColour (R r, F f)
   | odd (r+f) = Black
   | otherwise = White
+
 --------------------------------------------------------------------------------
 data Colour
   = White | Black

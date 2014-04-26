@@ -7,7 +7,7 @@ import Data.Maybe
 
 import ChessData
 import ChessBoard
-import ChessText
+import {-# SOURCE #-} ChessText
 
 --------------------------------------------------------------------------------
 initialBoard :: Board
@@ -51,11 +51,21 @@ pastMoves k ms = case ms of
     []                                      -> []
 
 --------------------------------------------------------------------------------
-doMove :: Move -> Board -> Board
-doMove m d = d // doMove' m d
+doMoveGame :: Move -> Game -> Game
+doMoveGame m g@Game{gBoard=d, gTurn=pc, gMoves=ms}
+  = g{gBoard=doMoveBoard m d, gTurn=oppose pc, gMoves=m:ms}
 
-doMove' :: Move -> Board -> [Update]
-doMove' m board = case m of
+undoMoveGame :: Game -> Maybe Game
+undoMoveGame g@Game{gBoard=d, gTurn=pc, gMoves=ms} = do
+    m:ms' <- ms
+    return g{gBoard=undoMoveBoard m d, gTurn=oppose pc, gMoves=ms'}    
+
+--------------------------------------------------------------------------------
+doMoveBoard :: Move -> Board -> Board
+doMoveBoard m d = d // doMoveBoard' m d
+
+doMoveBoard' :: Move -> Board -> [Update]
+doMoveBoard' m board = case m of
     Move{ mPath=t }                     -> path t
     Passant{ mPath=t@(i,j) }            -> ((rank i,file j),Nothing) : path t
     Promote{ mPath=(i,j), mPromote=p }  -> (i,Nothing) : (j,promote i p) : []
@@ -64,12 +74,11 @@ doMove' m board = case m of
     path (i,j)  = (i,Nothing) : (j,board!i) : []
     promote i p = (\(c,_) -> (c,p)) <$> board!i
 
---------------------------------------------------------------------------------
-undoMove :: Move -> Board -> Board
-undoMove m d = d // undoMove' m d
+undoMoveBoard :: Move -> Board -> Board
+undoMoveBoard m d = d // undoMoveBoard' m d
 
-undoMove' :: Move -> Board -> [Update]
-undoMove' m board = case m of
+undoMoveBoard' :: Move -> Board -> [Update]
+undoMoveBoard' m board = case m of
     Move{ mPath=(i,j), mCapture=mp }    -> (j,free i mp) : (i,board!j) : []
     Promote{ mPath=(i,j), mCapture=mp } -> (j,free i mp) : (i,demote j) : []
     Passant{ mPath=t@(i@(r,_),(_,f)) }  -> ((r,f),free i (Just Pawn)) : unpath t
@@ -141,7 +150,7 @@ tryMove (t@(i,j),mpp) g@Game{gBoard=d, gTurn=pc} = do
     (ic,ip) <- d!i; guard (ic==pc)
     m <- tryBasicMove' (ic,ip,t) d <|> trySpecialMove' (ip,t) g
     m <- tryPromote' (ic,ip,mpp) m
-    guard (not $ inCheck' (doMove m d) pc)
+    guard (not $ inCheck' (doMoveBoard m d) pc)
     return m
 
 -- A legal move, ignoring en passant, pawn promotion, turn order and check -----
@@ -186,7 +195,7 @@ tryCastle' (ip,t) g@Game{gBoard=d, gTurn=pc, gMoves=ms} = do
     (i@(ri,fi),j@(rj,fj)) = t
     t'@(i',j') = ((ri,(if fj<fi then head else last) files),(ri,(fi+fj)`div`2))
 
--- Pre: d!i==Just(pc,ip) --------------------------------------------------------
+-- Pre: d!i==Just(pc,ip) -------------------------------------------------------
 -- A legal en passant capture, ignoring check and pawn promotion
 tryPassant' :: (Piece,Path) -> Game -> Maybe Move
 tryPassant' (ip,t) Game{gBoard=d, gTurn=pc, gMoves=ms} = do
@@ -198,29 +207,50 @@ tryPassant' (ip,t) Game{gBoard=d, gTurn=pc, gMoves=ms} = do
     (i@(ri,fi),j@(rj,fj)) = t
     t'@(i',j') = ((rj+fore pc,fj),(rj-fore pc,fj))
 
--- Pre: d!i==Just(ic,ip) -------------------------------------------------------
--- True iff moving from i to j would be legal if j were empty,
--- ignoring turn order, en passant and check.
+-- Pre: d!i==Just(ic,ip) where (ic,ip,(i,j))=s ---------------------------------
+-- True iff moving from i to j would be legal if j were empty OR if it contained
+-- an opponent's piece, or both, ignoring en passant, turn order and check.
+couldMove' :: (Colour,Piece,Path) -> Board -> Bool
+couldMove' s d
+  = couldMoveAndCapture' s d || couldOnlyMove' s d || couldOnlyCapture' s d
+
+-- Pre: d!i==Just(ic,ip) where (ic,ip,(i,j))=s ---------------------------------
 couldJustMove' :: (Colour,Piece,Path) -> Board -> Bool
-couldJustMove' (c,p,t@((ri,fi),(rj,fj))) d = case p of
-    Pawn   -> fj==fi && (rj==ri+rf || (ri,rj)==(rb+1,ri+2*rf)) && couldSlide t d
+couldJustMove' s d = couldMoveAndCapture' s d || couldOnlyMove' s d
+
+-- Pre: d!i==Just(ic,ip) where (ic,ip,(i,j))=s ---------------------------------
+couldCapture' :: (Colour,Piece,Path) -> Board -> Bool
+couldCapture' s d = couldMoveAndCapture' s d || couldOnlyCapture' s d
+
+-- Pre: d!i==Just(ic,ip) -------------------------------------------------------
+-- True iff moving from i to j would be legal ONLY if j were empty,
+-- ignoring turn order, en passant and check.
+couldOnlyMove' :: (Colour,Piece,Path) -> Board -> Bool
+couldOnlyMove' (c,p,t@((ri,fi),(rj,fj))) d = case p of
+    Pawn -> fj==fi && (rj==ri+rf || (ri,rj)==(rb+1,ri+2*rf)) && couldSlide t d
+    _    -> False
+  where (rb,rt,rf) = (base c, top c, fore c)
+
+-- Pre: d!i==Just(ic,ip) -------------------------------------------------------
+-- True iff moving from i to j would be legal ONLY if an opponent's piece were
+-- at j, ignoring turn order and check.
+couldOnlyCapture' :: (Colour,Piece,Path) -> Board -> Bool
+couldOnlyCapture' s@(ic,ip,t@((ri,fi),(rj,fj))) d = case ip of
+    Pawn -> rj==ri+1*fore ic && abs(fj-fi)==1
+    _    -> False
+
+-- Pre: d!i==Just(c,p) ---------------------------------------------------------
+-- True iff moving from i to j would be legal if j were empty AND if it
+-- contained an opponent's piece, ignoring turn order and check.
+couldMoveAndCapture' :: (Colour,Piece,Path) -> Board -> Bool
+couldMoveAndCapture' (c,p,t@((ri,fi),(rj,fj))) d = case p of
+    Pawn   -> False
     Knight -> (abs rd,abs fd) `elem` [(1,2),(2,1)]
     Rook   -> (rd==0 || fd==0) && couldSlide t d
     Bishop -> (rd-fd==0 || rd+fd==0) && couldSlide t d
     Queen  -> (rd==0 || fd==0 || rd+fd==0 || rd-fd==0) && couldSlide t d
     King   -> abs rd < 2 && abs fd < 2
-  where
-    (rd,fd)    = (unR(rj-ri), unF(fj-fi))
-    (rb,rt,rf) = (base c, top c, fore c)
-
-
--- Pre: d!i==Just(ic,ip) -------------------------------------------------------
--- True iff moving from i to j would be legal if an opponent's piece were at 
--- ignoring turn order and check. couldCapture :: Path -> Board -> Boolean 
-couldCapture' :: (Colour,Piece,Path) -> Board -> Bool
-couldCapture' s@(ic,ip,t@((ri,fi),(rj,fj))) d = case ip of
-    Pawn -> rj==ri+1*fore ic && abs(fj-fi)==1
-    _    -> couldJustMove' s d
+  where (rd,fd) = (unR(rj-ri), unF(fj-fi))
 
 -- True iff every square strictly between i and j is empty ---------------------
 couldSlide :: Path -> Board -> Bool

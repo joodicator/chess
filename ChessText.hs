@@ -4,17 +4,72 @@ module ChessText where
 import Data.Char
 import Data.List
 import Data.Maybe
+import Data.Tuple
+import Data.Function
+import Control.Monad
 
 import ChessData
-import ChessBoard(Board)
-import qualified ChessBoard as B
+import ChessBoard
+import ChessRules
 
 --------------------------------------------------------------------------------
+-- The given move in Standard Algebraic Notation.
+showMove :: Board -> Move -> String
+showMove d Move{mPath=t@(i,j), mCapture=mpc}
+  = fromMaybe (showIndex i) prefix ++ maybe "" (const "x") mpc ++ showIndex j
+  where
+    prefix = fmap (\(c,p) -> showMovePrefix' d (c,p,t,mpc)) (d!i)
+showMove d Passant{mPath=t}
+  = showMove d Move{mPath=t, mCapture=Just Pawn} ++ "e.p."
+showMove d Promote{mPath=t, mCapture=mpc, mPromote=pp}
+  = showMove d Move{mPath=t, mCapture=mpc} ++ [showPiece pp]
+showMove _ Castle{mKing=((_,fi),(_,fj))}
+  | fj < fi   = "0-0-0"
+  | otherwise = "0-0"
+
+-- Pre: d!i==Just(c,p) ---------------------------------------------------------
+-- The piece and source index part of the move in Standard Algebraic Notation.
+showMovePrefix' :: Board -> (Colour,Piece,Path,Maybe Piece) -> String
+showMovePrefix' d (c,p,t@(i,j),mpc)
+  = (guard (p/=Pawn)                       >> [showPiece p]) ++
+    (guard (any (on (==) file $ i) rivals) >> [showFile (file i)]) ++
+    (guard (any (on (==) rank $ i) rivals) >> [showRank (rank i)])
+  where
+    rivals = do
+        (k,(kc,kp)) <- list c d; guard (kp==p && k/=i)
+        when (isNothing mpc) $ guard (couldJustMove' (kc,kp,(k,j)) d)
+        when (isJust mpc)    $ guard (couldCapture'  (kc,kp,(k,j)) d)
+        return k
+
+showIndex :: Index -> String
+showIndex (r,f)
+  = showFile f : showRank r : []
+
+readIndex :: String -> Maybe (Index, String)
+readIndex cs = do
+    fc:rc:cs' <- return cs
+    f <- readFileIndex fc
+    r <- readRankIndex rc
+    return ((r,f),cs')
+
+--------------------------------------------------------------------------------
+rankChars :: [(Rank,Char)]
+rankChars = zip ranks ['1'..]
+
+fileChars :: [(File,Char)]
+fileChars = zip files ['a'..]
+
 showRank :: Rank -> Char
-showRank (R n) = chr ((ord '1') + n - 1)
+showRank = fromJust . flip lookup rankChars
 
 showFile :: File -> Char
-showFile (F n) = chr ((ord 'a') + n - 1)
+showFile = fromJust . flip lookup fileChars
+
+readRankIndex :: Char -> Maybe Rank
+readRankIndex = flip lookup (map swap rankChars)
+
+readFileIndex :: Char -> Maybe File
+readFileIndex = flip lookup (map swap fileChars)
 
 --------------------------------------------------------------------------------
 showPiece :: Piece -> Char
@@ -65,7 +120,7 @@ readBoard :: String -> Board
 readBoard = readBoardLines . lines
 
 readBoardLines :: [String] -> Board
-readBoardLines lines = B.fromList $ do
+readBoardLines lines = fromList $ do
     (r,line) <- zip (reverse ranks) lines
     (f,char) <- zip files (filter (/= ' ') line)
     return ((r,f), readSquare char)
@@ -81,7 +136,7 @@ showBoardLines :: Board -> [String]
 showBoardLines b
   = map (intersperse ' ') $ map rankRow (reverse ranks) ++ [lastRow]
   where
-    rankRow r = [showSquare (r,f) (b B.! (r,f)) | f <- files] ++ [showRank r]
+    rankRow r = [showSquare (r,f) (b ! (r,f)) | f <- files] ++ [showRank r]
     lastRow = map showFile files
 
 showLegendLines :: Int -> [String]
