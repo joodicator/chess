@@ -1,25 +1,24 @@
 import System.IO
 
 import ChessData
+import ChessPlay
 import ChessText
-import ChessRules
 
-main = play initialGame
+main = do
+    (_, result) <- play (human, human) printGame
+    case result of
+      Checkmate{rWinner=wc} -> putStrLn (show wc ++ " wins by checkmate.")
+      Stalemate             -> putStrLn ("The game is drawn by stalemate.")
 
-play :: Game -> IO ()
-play game = do
-    printGame game
-    play' game
-
-play' :: Game -> IO ()
-play' game = do
-    putStr $ show (gTurn game) ++ "> "
+human :: Input IO
+human game@Game{gTurn=pc} = do
+    putStr (show pc ++ "> ")
     hFlush stdout
     line <- getLine
     case readMove game line of
       Left error -> do
-        putStrLn $ "Error: " ++ error ++ "."
-        play' game 
+        putStrLn ("Error: " ++ error ++ ".")
+        human game
       Right move -> do
         putStrLn ""
-        play $ doMoveGame move game
+        return move
