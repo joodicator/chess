@@ -80,9 +80,9 @@ undoMoveBoard m d = d // undoMoveBoard' m d
 
 undoMoveBoard' :: Move -> Board -> [Update]
 undoMoveBoard' m board = case m of
-    Move{ mPath=(i,j), mCapture=mp }    -> (j,free i mp) : (i,board!j) : []
-    Promote{ mPath=(i,j), mCapture=mp } -> (j,free i mp) : (i,demote j) : []
-    Passant{ mPath=t@(i@(r,_),(_,f)) }  -> ((r,f),free i (Just Pawn)) : unpath t
+    Move{ mPath=(i,j), mCapture=mp }    -> (j,free j mp) : (i,board!j) : []
+    Promote{ mPath=(i,j), mCapture=mp } -> (j,free j mp) : (i,demote j) : []
+    Passant{ mPath=t@((r,_),j@(_,f)) }  -> ((r,f),free j (Just Pawn)) : unpath t
     Castle{ mKing=kt, mRook=rt }        -> unpath kt ++ unpath rt
   where
     unpath (i,j) = (j,Nothing) : (i,board!j) : []

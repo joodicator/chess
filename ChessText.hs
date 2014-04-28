@@ -20,15 +20,23 @@ type UserErrorE a = Either UserError a
 --------------------------------------------------------------------------------
 -- The given move in Standard Algebraic Notation.
 showMove :: Board -> Move -> String
-showMove d Move{mPath=t@(i,j), mCapture=mpc}
-  = fromMaybe (showIndex i) prefix ++ maybe "" (const "x") mpc ++ showIndex j
+showMove = showMove' False
+
+showMoveLong :: Board -> Move -> String
+showMoveLong = showMove' True
+
+showMove' :: Bool -> Board -> Move -> String
+showMove' long d Move{mPath=t@(i,j), mCapture=mpc}
+  = piece ++ fromMaybe (showIndex i) (guard (not long) >> from) ++ to
   where
-    prefix = fmap (\(c,p) -> showMovePrefix' d (c,p,t,mpc)) (d!i)
-showMove d Passant{mPath=t}
-  = showMove d Move{mPath=t, mCapture=Just Pawn} ++ "e.p."
-showMove d Promote{mPath=t, mCapture=mpc, mPromote=pp}
-  = showMove d Move{mPath=t, mCapture=mpc} ++ [showPiece pp]
-showMove _ Castle{mKing=((_,fi),(_,fj))}
+    piece = maybe "" (\(_,p) -> if p==Pawn then "" else [showPiece p]) (d!i)
+    from  = fmap (\(c,p) -> showMovePrefix' d (c,p,t,mpc)) (d!i)
+    to    = maybe "" (const "x") mpc ++ showIndex j
+showMove' long d Passant{mPath=t}
+  = showMove' long d Move{mPath=t, mCapture=Just Pawn} ++ "e.p."
+showMove' long d Promote{mPath=t, mCapture=mpc, mPromote=pp}
+  = showMove' long d Move{mPath=t, mCapture=mpc} ++ [showPiece pp]
+showMove' _ _ Castle{mKing=((_,fi),(_,fj))}
   | fj < fi   = "0-0-0"
   | otherwise = "0-0"
 
@@ -36,8 +44,7 @@ showMove _ Castle{mKing=((_,fi),(_,fj))}
 -- The piece and source index part of the move in Standard Algebraic Notation.
 showMovePrefix' :: Board -> (Colour,Piece,Path,Maybe Piece) -> String
 showMovePrefix' d (c,p,t@(i,j),mpc)
-  = (guard (p/=Pawn)                       >> [showPiece p]) ++
-    (guard (any (on (==) file $ i) rivals) >> [showFile (file i)]) ++
+  = (guard (any (on (==) file $ i) rivals) >> [showFile (file i)]) ++
     (guard (any (on (==) rank $ i) rivals) >> [showRank (rank i)])
   where
     rivals = [k | (k,(_,kp))<-list c d, kp==p, k/=i, couldMove' (c,kp,(k,j)) d]
@@ -219,11 +226,37 @@ readBoardLines lines = fromList $ do
     return ((r,f), readSquare char)
 
 --------------------------------------------------------------------------------
+showGame :: Game -> String
+showGame = unlines . showGameLines
+
+printGame :: Game -> IO ()
+printGame = mapM_ putStrLn . showGameLines
+
 showBoard :: Board -> String
 showBoard = unlines . showBoardLines
 
 printBoard :: Board -> IO ()
 printBoard = mapM_ putStrLn . showBoardLines
+
+showGameLines :: Game -> [String]
+showGameLines game@Game{gBoard=board, gTurn=pc, gMoves=moves}
+  = joinColumns [boardLines, topLines ++ legendLines ++ bottomLines]
+  where
+    boardLines   = showBoardLines board
+    topLines     = ["", noteLine Black, ""]
+    bottomLines  = ["", noteLine White, ""]
+    legendLines  = showLegendLines legendHeight
+    legendHeight = length boardLines - length topLines - length bottomLines
+    noteLine c   = show c ++ noteLine' c
+    noteLine' c  = if c==pc then playerLine else opponentLine
+    playerLine = case (canMove game, inCheck game) of
+        (True, False)  -> " to play."
+        (True, True)   -> " to play (in check)."
+        (False, True)  -> ": checkmate."
+        (False, False) -> ": stalemate."
+    opponentLine = case moves of
+        m:_ -> ": " ++ showMoveLong (undoMoveBoard m board) m
+        []  -> ""
 
 showBoardLines :: Board -> [String]
 showBoardLines b
@@ -235,10 +268,11 @@ showBoardLines b
 
 showLegendLines :: Int -> [String]
 showLegendLines n
-   = joinColumns $ map (map pieceLegend) $ divide n $ [minBound::Piece ..]
-   where
-     pieceLegend p = showColourPiece (White,p) : showColourPiece (Black,p)
-                   : ' ' : map toLower (show p)
+  = joinColumns (divide n entries)
+  where
+    entries = map pieceLegend [minBound::Piece ..]
+    pieceLegend p = showColourPiece (White,p)
+                  : showColourPiece (Black,p) : ' ' : map toLower (show p)
 
 --------------------------------------------------------------------------------
 joinColumns :: [[String]] -> [String]

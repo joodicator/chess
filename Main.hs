@@ -8,7 +8,7 @@ main = play initialGame
 
 play :: Game -> IO ()
 play game = do
-    printBoard (gBoard game)
+    printGame game
     play' game
 
 play' :: Game -> IO ()
