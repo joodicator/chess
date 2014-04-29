@@ -9,7 +9,7 @@ import Control.Applicative
 import Data.List
 import Data.Maybe
 import Data.Char
-import qualified Data.Map.Strict as M
+import qualified Data.Map as M
 import System.IO
 
 --------------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import Data.Function
 import Control.Applicative
 import Control.Monad
 
+import Standard
 import ChessData
 import ChessBoard
 import ChessRules
