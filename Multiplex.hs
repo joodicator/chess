@@ -1,10 +1,63 @@
 --------------------------------------------------------------------------------
 module Multiplex(
-    Chan, readChan, writeChan, writeChanList,
+    TextChan, runTextChan', runTextChan, multiplex, mapChan,
+    Chan, readChan, writeChan, writeChanList, takeSubChan, feedSubChan,
     takeChan, feedChan, giveChan, feedChanList, giveChanList
 ) where
 
+import Control.Applicative
+import Data.List
 import Data.Maybe
+import Data.Char
+import qualified Data.Map.Strict as M
+import System.IO
+
+--------------------------------------------------------------------------------
+type TextChan a = Chan String String a
+
+runTextChan :: TextChan a -> IO a
+runTextChan = runTextChan' (stdin, stdout)
+
+runTextChan' :: (Handle,Handle) -> TextChan a -> IO a
+runTextChan' (inH, outH) chan = do
+    let (mx,lines,chan') = takeChan chan
+    mapM_ (hPutStrLn outH) lines
+    case mx of
+      Nothing -> do
+        line <- hGetLine inH
+        let (_,chan'') = giveChan line chan'
+        runTextChan' (inH,outH) chan''
+      Just x -> do
+        return x
+
+multiplex :: TextChan a -> TextChan ()
+multiplex = multiplex' M.empty
+
+multiplex' :: M.Map String (TextChan a) -> TextChan a -> TextChan ()
+multiplex' chans proto = do
+    (name,line) <- chanName <$> readChan
+    let chan = M.findWithDefault proto name chans
+    let (reply,_,chan') = feedChan line chan
+    writeChanList (map (name ++) reply)
+    let (mx,_,_) = takeChan chan'
+    let chans' = maybe (M.insert name chan') (const $ M.delete name) mx $ chans
+    multiplex' chans' proto
+
+chanName :: String -> (String, String)
+chanName s@('#':_) = (h ++ take 1 t, drop 1 t) where (h,t) = break isSpace s
+chanName s         = ("", s)
+
+mapChan :: (i' -> i) -> (o -> o') -> Chan i o a -> Chan i' o' a
+mapChan iMap oMap chan = do
+    let (mx,lines,chan') = takeChan chan
+    writeChanList (map oMap lines)
+    case mx of
+      Nothing -> do
+        item <- fmap iMap readChan
+        let (_,chan'') = giveChan item chan'
+        mapChan iMap oMap chan''
+      Just x -> do
+        return x
 
 --------------------------------------------------------------------------------
 data Chan i o a = Chan [o] (Either a (i -> Chan i o a))
@@ -15,6 +68,9 @@ instance Show (Chan i o a) where
 instance Monad (Chan i o) where
     return = chanPure
     (>>=)  = chanBind
+
+instance Functor (Chan i o) where
+    fmap f c = c >>= (return . f)
 
 chanPure :: a -> Chan i o a
 chanPure x = Chan [] (Left x)
@@ -34,6 +90,18 @@ writeChan x = writeChanList [x]
 
 writeChanList :: [o] -> Chan i o ()
 writeChanList xs = Chan xs (Left ())
+
+feedSubChan :: i -> Chan i o a -> Chan i o (Chan i o a)
+feedSubChan z c = do
+    let (ys,_,c') = feedChan z c
+    writeChanList ys
+    return c'
+
+takeSubChan :: Chan i o a -> Chan i o (Chan i o a)
+takeSubChan c = do
+    let (_,ys,c') = takeChan c
+    writeChanList ys
+    return c'
 
 --------------------------------------------------------------------------------
 feedChan :: i -> Chan i o a -> ([o], Maybe i, Chan i o a)
