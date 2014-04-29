@@ -52,6 +52,21 @@ pastMoves k ms = case ms of
     []                                      -> []
 
 --------------------------------------------------------------------------------
+play :: Monad m
+     => (Game -> m Move, Game -> m Move) -> (Game -> m ()) -> m (Game, Result)
+play = play' initialGame
+
+play' :: Monad m => Game
+      -> (Game -> m Move, Game -> m Move) -> (Game -> m ()) -> m (Game, Result)
+play' game (in1, in2) out = do
+    out game
+    move <- in1 game
+    let game' = doMoveGame move game
+    case result game' of
+        Nothing -> play' game' (in2, in1) out
+        Just r  -> out game' >> return (game', r)
+
+--------------------------------------------------------------------------------
 doMoveGame :: Move -> Game -> Game
 doMoveGame m g@Game{gBoard=d, gTurn=pc, gMoves=ms}
   = g{gBoard=doMoveBoard m d, gTurn=oppose pc, gMoves=m:ms}

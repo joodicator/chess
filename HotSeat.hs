@@ -1,8 +1,8 @@
 import System.IO
 
 import ChessData
-import ChessPlay
 import ChessText
+import ChessRules
 
 main = do
     (_, result) <- play (human, human) printGame
@@ -10,7 +10,7 @@ main = do
       Checkmate{rWinner=wc} -> putStrLn (show wc ++ " wins by checkmate.")
       Stalemate             -> putStrLn ("The game is drawn by stalemate.")
 
-human :: Input IO
+human :: Game -> IO Move
 human game@Game{gTurn=pc} = do
     putStr (show pc ++ "> ")
     hFlush stdout
