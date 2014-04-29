@@ -14,9 +14,9 @@ import Multiplex
 gameChannel :: NameChan ()
 gameChannel = do
     (mn,line) <- readChan
-    case line of
-        "!start" -> gameChannelStart
-        _        -> gameChannel
+    case map toLower line of
+        "start" -> gameChannelStart
+        _       -> gameChannel
 
 gameChannelStart :: NameChan ()
 gameChannelStart = do
@@ -26,15 +26,14 @@ gameChannelPlay :: NameChan () -> NameChan ()
 gameChannelPlay subChan = do
     subChan <- takeSubChan subChan
     (mn,line) <- readChan
-    case line of
-        "!stop" -> do
+    case map toLower line of
+        "start" -> do
+            writeChan (mn,"Error: a game is already started.")
+        "stop" -> do
             gameChannelEnd
-            gameChannel
-        "!restart" -> do
+        "restart" -> do
             gameChannelEnd
             gameChannelStart
-        _ | take 1 line == "!" -> do
-            gameChannelPlay subChan
         _ | otherwise -> do
             subChan <- feedSubChan (mn,line) subChan
             gameChannelPlay subChan 

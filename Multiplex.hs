@@ -20,6 +20,7 @@ runTextChan = runTextChan' (stdin, stdout)
 
 runTextChan' :: (Handle,Handle) -> TextChan a -> IO a
 runTextChan' (inH, outH) chan = do
+    hSetBuffering outH LineBuffering
     let (mx,lines,chan') = takeChan chan
     mapM_ (hPutStrLn outH) lines
     case mx of

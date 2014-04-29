@@ -1,4 +1,4 @@
 import Multiplex
 import ChessControl
 
-main = runTextChan $ nameChan $ gameChannel
+main = runTextChan $ multiplex $ nameChan $ gameChannel
