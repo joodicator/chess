@@ -1,4 +1,4 @@
-SRCDIR := src
+SRCDIR := .
 OBJDIR := obj
 BINDIR := bin
 
