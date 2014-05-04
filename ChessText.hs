@@ -103,7 +103,7 @@ readMoveSpec Game{gBoard=d, gTurn=pc} s
             guard (couldMove' (pc,ip,(i,j)) d)
             return i
         case is of
-            []  -> Left "illegal move"
+            []  -> Left "unrecognised move"
             [i] -> return (((i,j),mpp),isC,isP)
             _   -> Left "ambiguous move"
 
@@ -194,10 +194,11 @@ readPiece c = case toUpper c of
 
 --------------------------------------------------------------------------------
 showEmptySquare :: Index -> Char
-showEmptySquare p
-  = case squareColour p of
-      Black -> '+'
-      White -> '.'
+showEmptySquare = showEmptySquare' . squareColour
+
+showEmptySquare' :: Colour -> Char
+showEmptySquare' Black = '+'
+showEmptySquare' White = '.'
 
 showColourPiece :: (Colour,Piece) -> Char
 showColourPiece (c,p)
@@ -271,9 +272,11 @@ showLegendLines :: Int -> [String]
 showLegendLines n
   = joinColumns (divide n entries)
   where
-    entries = map pieceLegend [minBound::Piece ..]
-    pieceLegend p = showColourPiece (White,p)
-                  : showColourPiece (Black,p) : ' ' : map toLower (show p)
+    entries = map pieceLegend [minBound ..] ++ map emptyLegend [White,Black]
+              
+    emptyLegend c = showEmptySquare' c : ' ' : map toLower (show c)
+    pieceLegend p = showColourPiece (White,p) : showColourPiece (Black,p)
+                  : ' ' : map toLower (show p)
 
 --------------------------------------------------------------------------------
 joinColumns :: [[String]] -> [String]
