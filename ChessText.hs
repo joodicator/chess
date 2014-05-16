@@ -96,21 +96,21 @@ readMoveSpec Game{gBoard=d, gTurn=pc} s
     move' :: ((Maybe Rank,Maybe File),Index,Maybe Piece,Maybe Piece,
               IsCapture,IsPassant) -> (UserErrorE ExMoveSpec)
     move' ((mri,mfi),j,mip,mpp,isC,isP) = do
-        let ips = do
+        mip <- return $ case (mri,mfi,mip) of
+            (Just _,Just _,     _) -> mip
+            (     _,     _,Just _) -> mip
+            _                      -> Just Pawn
+        let is = do
             (i@(ri,fi),(_,ip)) <- list pc d;
             maybe (return ()) (guard . (==) ip) mip
             maybe (return ()) (guard . (==) ri) mri
             maybe (return ()) (guard . (==) fi) mfi
             guard (couldMove' (pc,ip,(i,j)) d)
-            return (i,ip)
-        let is = do
-            (i,p) <- ips
-            guard (isJust mip || length ips < 2 || p == Pawn)
             return i
         case is of
-            [] | null ips -> Left "illegal move"
-            [i]           -> return (((i,j),mpp),isC,isP)
-            _             -> Left "ambiguous move"
+            []  -> Left "illegal move"
+            [i] -> return (((i,j),mpp),isC,isP)
+            _   -> Left "ambiguous move"
 
     castleK :: String -> Maybe (UserErrorE ExMoveSpec)
     castleK s = do
