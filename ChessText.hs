@@ -78,7 +78,7 @@ readMoveSpec Game{gBoard=d, gTurn=pc} s
         (mpp,s)        <- trimS (option $ char readPiece) s
         (mIsP,s)       <- trimS (option $ word "e.p.") s
         (_,[])         <- space s
-        return (move' (mi,j,fromMaybe Pawn mip,mpp,isC,isJust mIsP))
+        return (move' (mi,j,mip,mpp,isC,isJust mIsP))
     moveFrom :: String
              -> Maybe (((Maybe Rank,Maybe File),Index,IsCapture), String)
     moveFrom s = do
@@ -93,19 +93,24 @@ readMoveSpec Game{gBoard=d, gTurn=pc} s
         (_,s)  <- space s
         (j,s)  <- readIndex s
         return ((mi,j,isJust mIsC),s)
-    move' :: ((Maybe Rank,Maybe File),Index,Piece,Maybe Piece,IsCapture,IsPassant)
-          -> (UserErrorE ExMoveSpec)
-    move' ((mri,mfi),j,ip,mpp,isC,isP) = do
-        let is = do
-            (i@(ri,fi),(_,ip')) <- list pc d; guard (ip'==ip)
+    move' :: ((Maybe Rank,Maybe File),Index,Maybe Piece,Maybe Piece,
+              IsCapture,IsPassant) -> (UserErrorE ExMoveSpec)
+    move' ((mri,mfi),j,mip,mpp,isC,isP) = do
+        let ips = do
+            (i@(ri,fi),(_,ip)) <- list pc d;
+            maybe (return ()) (guard . (==) ip) mip
             maybe (return ()) (guard . (==) ri) mri
             maybe (return ()) (guard . (==) fi) mfi
             guard (couldMove' (pc,ip,(i,j)) d)
+            return (i,ip)
+        let is = do
+            (i,p) <- ips
+            guard (isJust mip || length ips < 2 || p == Pawn)
             return i
         case is of
-            []  -> Left "unrecognised move"
-            [i] -> return (((i,j),mpp),isC,isP)
-            _   -> Left "ambiguous move"
+            [] | null ips -> Left "illegal move"
+            [i]           -> return (((i,j),mpp),isC,isP)
+            _             -> Left "ambiguous move"
 
     castleK :: String -> Maybe (UserErrorE ExMoveSpec)
     castleK s = do
@@ -244,13 +249,16 @@ showGameLines :: Game -> [String]
 showGameLines game@Game{gBoard=board, gTurn=pc, gMoves=moves}
   = joinColumns [boardLines, topLines ++ legendLines ++ bottomLines]
   where
-    boardLines   = showBoardLines board
-    topLines     = ["", noteLine Black, ""]
-    bottomLines  = ["", noteLine White, ""]
-    legendLines  = showLegendLines legendHeight
-    legendHeight = length boardLines - length topLines - length bottomLines
-    noteLine c   = show c ++ noteLine' c
-    noteLine' c  = if c==pc then playerLine else opponentLine
+    boardLines    = showBoardLines board
+    topLines      = [noteLine Black, captureLine Black, ""]
+    bottomLines   = ["", captureLine White, noteLine White]
+    legendLines   = showLegendLines legendHeight
+    legendHeight  = length boardLines - length topLines - length bottomLines
+    noteLine c    = show c ++ noteLine' c
+    noteLine' c   = if c==pc then playerLine else opponentLine
+    captureLine c = case filter (\(c',_) -> c' /= c) (capturedPieces game) of
+        [] -> ""
+        cs -> "Captured: " ++ reverse (map showColourPiece cs)
     playerLine = case (canMove game, inCheck game) of
         (True, False)  -> " to play."
         (True, True)   -> " to play (in check)."

@@ -51,6 +51,19 @@ pastMoves k ms = case ms of
     _ : ms'                                 -> pastMoves k ms'
     []                                      -> []
 
+capturedPieces :: Game -> [(Colour,Piece)]
+capturedPieces Game{gTurn=pc, gMoves=ms} = do
+    (c,m) <- zip (cycle [pc, oppose pc]) ms
+    Just p <- return (capturedPiece m)
+    return (c,p)
+
+capturedPiece :: Move -> Maybe Piece
+capturedPiece m = case m of
+    Move   {mCapture=mp} -> mp
+    Promote{mCapture=mp} -> mp
+    Passant{}            -> Just Pawn
+    _                    -> Nothing
+
 --------------------------------------------------------------------------------
 doMoveGame :: Move -> Game -> Game
 doMoveGame m g@Game{gBoard=d, gTurn=pc, gMoves=ms}
