@@ -29,6 +29,7 @@ gameChannelPlay subChan = do
     case map toLower line of
         "start" -> do
             writeChan (mn,"Error: a game is already started.")
+            gameChannelPlay subChan
         "stop" -> do
             gameChannelEnd
         "restart" -> do
