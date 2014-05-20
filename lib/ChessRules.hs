@@ -126,10 +126,9 @@ maybeMoves d c = concatMap (maybeMovesFrom' d) (list c d)
 maybeMovesFrom' :: Board -> (Index,(Colour,Piece)) -> [MoveSpec]
 maybeMovesFrom' d (i@(ri,fi),(c,p)) = case p of
     Pawn ->
-        let (rb,rt,rf) = (base c,top c,fore c) in
+        let (rb,rt,rf,jpps) = (base c,top c,fore c,map Just promotions) in
         [(,) (i,(ri+2*rf,fi))  Nothing] <|>
-        [(,) (i,(ri+rf,fi+fd)) Nothing | fd <- [-1,0,1]] <|>
-        [(,) (i,(ri+rf,fi))    (Just pp) | pp <- promotions]
+        [(,) (i,(ri+rf,fi+fd)) mpp | fd <- [-1,0,1], mpp <- Nothing:jpps]
     Knight -> do
         (rd,fd) <- [(1,2),(2,1)]; rs <- [-1,1]; fs <- [-1,1]
         return $ (,) (i,(ri+rd*rs,fi+fd*fs)) Nothing

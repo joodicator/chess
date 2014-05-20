@@ -10,7 +10,7 @@ import ChessData
 
 type Map = M.Map Index Piece
 type Update = (Index,Maybe (Colour,Piece))
-data Board = Board{ white::Map, black::Map }
+data Board = Board{ white::Map, black::Map } deriving (Eq, Ord)
 
 instance Show Board where show = const "Board"
 

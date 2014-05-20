@@ -36,7 +36,7 @@ squareColour (R r, F f)
 --------------------------------------------------------------------------------
 data Colour
   = White | Black
-  deriving (Eq, Enum, Bounded, Show)
+  deriving (Eq, Enum, Bounded, Show, Ord)
 
 oppose :: Colour -> Colour
 oppose White = Black
@@ -48,7 +48,7 @@ data Result
 
 data Piece
   = Pawn | Rook | Knight | Bishop | Queen | King
-  deriving (Eq, Enum, Bounded, Show)
+  deriving (Eq, Enum, Bounded, Show, Ord)
 
 type Promotion = Piece
 type MoveSpec = (Path, Maybe Promotion)

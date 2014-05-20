@@ -70,6 +70,10 @@ instance Monad (Chan i o) where
     return = chanPure
     (>>=)  = chanBind
 
+instance Applicative (Chan i o) where
+    pure      = return
+    af <*> ax = af >>= \f -> ax >>= \x -> return (f x)
+
 instance Functor (Chan i o) where
     fmap f c = c >>= (return . f)
 

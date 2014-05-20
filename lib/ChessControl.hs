@@ -11,18 +11,14 @@ import ChessText
 import Multiplex
 
 --------------------------------------------------------------------------------
-gameChannel :: NameChan ()
-gameChannel = do
+gameChannel :: NameChan a -> NameChan ()
+gameChannel subChan = do
     (mn,line) <- readChan
     case map toLower line of
-        "start" -> gameChannelStart
-        _       -> gameChannel
+        "start" -> gameChannelPlay subChan
+        _       -> gameChannel subChan
 
-gameChannelStart :: NameChan ()
-gameChannelStart = do
-    gameChannelPlay playName
-
-gameChannelPlay :: NameChan () -> NameChan ()
+gameChannelPlay :: NameChan a -> NameChan ()
 gameChannelPlay subChan = do
     subChan <- takeSubChan subChan
     (mn,line) <- readChan
@@ -32,9 +28,6 @@ gameChannelPlay subChan = do
             gameChannelPlay subChan
         "stop" -> do
             gameChannelEnd
-        "restart" -> do
-            gameChannelEnd
-            gameChannelStart
         _ | otherwise -> do
             subChan <- feedSubChan (mn,line) subChan
             gameChannelPlay subChan 
@@ -44,23 +37,24 @@ gameChannelEnd = do
     noName $ writeChan "Game cancelled."
 
 --------------------------------------------------------------------------------
-playName :: NameChan ()
-playName = play (readNameMove, readNameMove) writeNameGame >>= writeNameResult
+type NamePlayer = Game -> NameChan Move
+playName :: Game -> (NamePlayer,NamePlayer) -> NameChan ()
+playName game players = play game players writeNameGame >>= writeNameResult
 
-readNameMove :: Game -> NameChan Move
-readNameMove game = do
+nameHuman :: Game -> NameChan Move
+nameHuman game = do
     (mn, line) <- readChan
     case readMove game line of
         Right m -> return m
-        Left e  -> writeChan (mn, "Error: " ++ e ++ ".") >> readNameMove game
+        Left e  -> writeChan (mn, "Error: " ++ e ++ ".") >> nameHuman game
 
 writeNameGame :: Game -> NameChan ()
 writeNameGame game = noName $ writeChanList (showGameLines game)
 
 writeNameResult :: (Game,Result) -> NameChan ()
-writeNameResult (_,Checkmate w)
+writeNameResult r@(_,Checkmate w)
   = noName $ writeChan (show w ++ " wins by checkmate.")
-writeNameResult (_,Stalemate)
+writeNameResult r@(_,Stalemate)
   = noName $ writeChan ("The game is drawn by stalemate.")
 
 --------------------------------------------------------------------------------
@@ -81,17 +75,16 @@ nameChan = mapChan readName showName
     showName (Just n,  s)  = n ++ ": " ++ s
     showName (Nothing, s) = s
 
---------------------------------------------------------------------------------
-play :: Monad m
-     => (Game -> m Move, Game -> m Move) -> (Game -> m ()) -> m (Game, Result)
-play = play' initialGame
+runNameChan :: NameChan a -> IO a
+runNameChan = runTextChan . nameChan
 
-play' :: Monad m => Game
+--------------------------------------------------------------------------------
+play :: Monad m => Game
       -> (Game -> m Move, Game -> m Move) -> (Game -> m ()) -> m (Game, Result)
-play' game (in1, in2) out = do
+play game (in1, in2) out = do
     out game
     move <- in1 game
     let game' = doMoveGame move game
     case result game' of
-        Nothing -> play' game' (in2, in1) out
+        Nothing -> play game' (in2, in1) out
         Just r  -> out game' >> return (game', r)
