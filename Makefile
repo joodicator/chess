@@ -3,13 +3,13 @@ LIBDIR := lib
 OBJDIR := obj
 BINDIR := bin
 
-GHCFLAGS := -O2 -hidir $(OBJDIR) -odir $(OBJDIR) -i$(LIBDIR)
+_GHCFLAGS := $(GHCFLAGS) -O2 -hidir $(OBJDIR) -odir $(OBJDIR) -i$(LIBDIR)
 
 $(BINDIR)/Main: $(SRCDIR)/Main.hs $(LIBDIR)/*
-	ghc --make $(GHCFLAGS) -o $@ $<
+	ghc --make $(_GHCFLAGS) -o $@ $<
 
 $(BINDIR)/ChessMinMaxAITest: $(SRCDIR)/ChessMinMaxAITest.hs $(LIBDIR)/*
-	ghc --make $(GHCFLAGS) -o $@ $<
+	ghc --make $(_GHCFLAGS) -o $@ $<
 
 .phony: aitest
 aitest: $(BINDIR)/ChessMinMaxAITest

@@ -16,7 +16,7 @@ import ChessRules
 type PieceValue = Int
 
 data Value
-  = Min | Lose | Draw | Cycle Value | Value PieceValue | Win | Max
+  = Min | Lose | Draw | Cycle PieceValue | Value PieceValue | Win | Max
   deriving (Eq, Ord)
 
 instance Show Value where
@@ -38,33 +38,59 @@ data EqGame = EqGame{
 --------------------------------------------------------------------------------
 minMaxPlay :: Monad m => Int -> Game -> m Move
 minMaxPlay l g = do
-    (_,m):_ <- return $ minMaxPlay' l g
+    Just m <- return $ minMaxPlay' l g
     return m
 
-minMaxPlay' :: Int -> Game -> [(Value,Move)]
+minMaxPlay' :: Int -> Game -> Maybe Move
 minMaxPlay' l g@Game{gTurn=pc}
-  = bestMoves l pc g es
+  = snd <$> bestMove l pc g es
   where
     gs = catMaybes $ takeWhile isJust $ iterate (>>= undoMoveGame) (Just g)
-    es = S.fromList $ map eqGame gs
+    es = S.fromList $ map eqGame $ tail gs
 
-bestMoves :: Int -> Colour -> Game -> S.Set EqGame -> [(Value,Move)]
-bestMoves l c g@Game{gTurn=pc} es
-  = sortBy order $ map evaluate $ legalMoves g
+--------------------------------------------------------------------------------
+bestMove
+    :: Int          -- Maximum depth of recursion.
+    -> Colour       -- Player (not necessarily current) whose value is used.
+    -> Game         -- Current game state.
+    -> S.Set EqGame -- All previous game states.
+    -> Maybe (Value,Move)
+bestMove = bestMove' (Min,Max)
+
+bestMove'
+    :: (Value,Value) -> Int -> Colour -> Game -> S.Set EqGame
+    -> Maybe (Value,Move)
+bestMove' (best,worst) l c g@Game{gTurn=pc} es
+  = case evaluate best (legalMoves g) of
+        []  -> Nothing
+        vms -> Just $ maximumBy (comparePC `on` fst) vms
   where
-    order (u,_) (v,_)
-      | c == pc   = compare v u
-      | otherwise = compare u v
-    evaluate m = case ms of
-      _ | S.member e' es -> (Cycle v', m)
-      _ | l <= 1         -> (v', m)
-      []                 -> (v', m)
-      (v,_):_            -> (v, m)
+    comparePC :: Value -> Value -> Ordering
+    comparePC u v
+      | c == pc   = compare u v
+      | otherwise = compare v u
+
+    evaluate :: Value -> [Move] -> [(Value,Move)]
+    evaluate best' (m:ms)
+      | comparePC v worst == LT = (v,m) : evaluate best'' ms
       where
-        ms = bestMoves (l-1) c g' (S.insert e' es)
-        v' = gameValue c g'
+        best'' = maximumBy comparePC [best', v] 
+        v      = evaluate' m (worst, best'')
+    evaluate _ _ = []
+
+    evaluate' :: Move -> (Value,Value) -> Value
+    evaluate' m p = case v' of
+        Value v'' | toCycle && not fromCycle -> Cycle v''
+        _         | toCycle                  -> v'
+        _         | l <= 1                   -> v'
+        _         | otherwise                -> maybe v' fst mm
+      where
+        toCycle   = S.member (eqGame g') es
+        fromCycle = S.member e es
+        mm = bestMove' p (l-1) c g' (S.insert e es)
+        e  = eqGame g
         g' = doMoveGame m g
-        e' = eqGame g'
+        v' = gameValue c g'
 
 --------------------------------------------------------------------------------
 gameValue :: Colour -> Game -> Value
