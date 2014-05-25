@@ -43,54 +43,74 @@ minMaxPlay l g = do
 
 minMaxPlay' :: Int -> Game -> Maybe Move
 minMaxPlay' l g@Game{gTurn=pc}
-  = snd <$> bestMove l pc g es
+  = case minMaxPlay'' l g of
+        ([],_)  -> Nothing
+        (vms,_) -> Just . snd $ maximumBy (compare `on` fst) vms
+
+minMaxPlay'' :: Int -> Game -> ([(Value,Move)], Int)
+minMaxPlay'' l g@Game{gTurn=pc}
+  = bestMove'' (Min,Max) l pc g es
   where
     gs = catMaybes $ takeWhile isJust $ iterate (>>= undoMoveGame) (Just g)
     es = S.fromList $ map eqGame $ tail gs
 
 --------------------------------------------------------------------------------
-bestMove
-    :: Int          -- Maximum depth of recursion.
-    -> Colour       -- Player (not necessarily current) whose value is used.
-    -> Game         -- Current game state.
-    -> S.Set EqGame -- All previous game states.
-    -> Maybe (Value,Move)
-bestMove = bestMove' (Min,Max)
+type Eqs = S.Set EqGame
 
-bestMove'
-    :: (Value,Value) -> Int -> Colour -> Game -> S.Set EqGame
-    -> Maybe (Value,Move)
-bestMove' (best,worst) l c g@Game{gTurn=pc} es
-  = case evaluate best (legalMoves g) of
-        []  -> Nothing
-        vms -> Just $ maximumBy (comparePC `on` fst) vms
+bestMove' :: (Value,Value)        -- (α,β) if c=pc else (β,α), for α-β pruning.
+          -> Int                  -- Maximum remaining moves to examine.
+          -> Colour               -- Player for whom value is represented.
+          -> Game                 -- Current game state.
+          -> Eqs                  -- Previous game states.
+          -> (Maybe (Value,Move), -- Move judged optimal for current player.
+              Int)                -- Unused move quota.
+bestMove' p l c g@Game{gTurn=pc} es
+  = case vms of
+        _:_ -> (Just $ maximumBy (comparePC `on` fst) vms, l')
+        []  -> (Nothing, l')
+  where
+    (vms, l') = bestMove'' p l c g es
+    comparePC u v
+      | c == pc   = compare u v
+      | otherwise = compare v u
+
+bestMove'' :: (Value,Value) -> Int -> Colour -> Game -> Eqs
+           -> ([(Value,Move)], Int)
+bestMove'' p l c g@Game{gTurn=pc} es
+  = let ms = legalMoves g in evaluate p l ms ([], 0)
   where
     comparePC :: Value -> Value -> Ordering
     comparePC u v
       | c == pc   = compare u v
       | otherwise = compare v u
 
-    evaluate :: Value -> [Move] -> [(Value,Move)]
-    evaluate best' (m:ms)
-      | comparePC v worst == LT = (v,m) : evaluate best'' ms
+    evaluate :: (Value,Value) -> Int -> [Move]
+             -> ([(Value,Move)], Int) -> ([(Value,Move)], Int)
+    evaluate (best,worst) l ms@(m:ms') (vmsA,rA)
+      | comparePC v worst == LT = evaluate p' r' ms' ((v,m):vmsA, rA)
+      | otherwise               = ((v,m):vmsA, r'+rA)
       where
-        best'' = maximumBy comparePC [best', v] 
-        v      = evaluate' m (worst, best'')
-    evaluate _ _ = []
+        p'    = (best',worst)
+        l'    = min l (3 * l `div` length ms)
+        r'    = l - l' + r
+        (v,r) = evaluate' (worst,best) l' m
+        best' = maximumBy comparePC [best,v]
+    evaluate _ l [] (vmsA,rA) = (vmsA,l+rA)
 
-    evaluate' :: Move -> (Value,Value) -> Value
-    evaluate' m p = case v' of
-        Value v'' | toCycle && not fromCycle -> Cycle v''
-        _         | toCycle                  -> v'
-        _         | l <= 1                   -> v'
-        _         | otherwise                -> maybe v' fst mm
+    evaluate' :: (Value,Value) -> Int -> Move -> (Value, Int)
+    evaluate' p l m = case v' of
+          _         | not toCycle && l'>0 -> (maybe v' fst mm, r)
+          _         | not toCycle         -> (v',              l')
+          Value v'' | not fromCycle       -> (Cycle v'',       l')
+          _         | otherwise           -> (v',              l')
       where
         toCycle   = S.member (eqGame g') es
         fromCycle = S.member e es
-        mm = bestMove' p (l-1) c g' (S.insert e es)
-        e  = eqGame g
-        g' = doMoveGame m g
-        v' = gameValue c g'
+        l'        = l - 1
+        (mm,r)    = bestMove' p l' c g' (S.insert e es)
+        e         = eqGame g
+        g'        = doMoveGame m g
+        v'        = gameValue c g'
 
 --------------------------------------------------------------------------------
 gameValue :: Colour -> Game -> Value
