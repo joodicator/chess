@@ -6,6 +6,7 @@ module Multiplex(
 ) where
 
 import Control.Applicative
+import Control.Monad
 import Data.List
 import Data.Maybe
 import Data.Char
@@ -22,7 +23,7 @@ runTextChan' :: (Handle,Handle) -> TextChan a -> IO a
 runTextChan' (inH, outH) chan = do
     hSetBuffering outH LineBuffering
     let (mx,lines,chan') = takeChan chan
-    mapM_ (hPutStrLn outH) lines
+    mapM (hPutStrLn outH) lines
     case mx of
       Nothing -> do
         line <- hGetLine inH
@@ -130,5 +131,5 @@ giveChanList (z:zs) (Chan ys (Right g))
 giveChanList zs c = (zs, c)
 
 takeChan :: Chan i o a -> (Maybe a, [o], Chan i o a)
-takeChan (Chan ys e@(Left x))  = (Just x,  ys, Chan [] e)
-takeChan (Chan ys e@(Right _)) = (Nothing, ys, Chan [] e)
+takeChan (Chan ys e)
+  = (either Just (const Nothing) e, ys, Chan [] e)
