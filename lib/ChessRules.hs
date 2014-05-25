@@ -14,12 +14,12 @@ initialBoard :: Board
 initialBoard = readBoardLines [
     "  a b c d e f g h  ",
     "8 R N L Q K L N R 8",
-    "7 P P P P P P P P 7",
+    "7 S S S S S S S S 7",
     "6 , . , . , . , . 6",
     "5 . , . , . , . , 5",
     "4 , . , . , . , . 4",
     "3 . , . , . , . , 3",
-    "2 p p p p p p p p 2",
+    "2 s s s s s s s s 2",
     "1 r n l q k l n r 1",
     "  a b c d e f g h  "]
 

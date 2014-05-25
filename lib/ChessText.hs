@@ -178,24 +178,19 @@ readFileIndex :: Char -> Maybe File
 readFileIndex = flip lookup (map swap fileChars)
 
 --------------------------------------------------------------------------------
+pieceMap = [
+    ('S',Pawn),     -- Soldier (Finnish: Sotilas)
+    ('R',Rook),
+    ('N',Knight),   -- kNight
+    ('L',Bishop),   -- Loper (German: Läufer, Danish: Løber, Finnish: Lähetti)
+    ('Q',Queen),
+    ('K',King)]
+
 showPiece :: Piece -> Char
-showPiece p = case p of
-    Pawn    -> 'P'
-    Rook    -> 'R'
-    Knight  -> 'N'
-    Bishop  -> 'L'
-    Queen   -> 'Q'
-    King    -> 'K'
+showPiece p = fromJust $ lookup p (map swap pieceMap)
 
 readPiece :: Char -> Maybe Piece
-readPiece c = case toUpper c of
-    'P' -> Just Pawn
-    'R' -> Just Rook
-    'N' -> Just Knight
-    'L' -> Just Bishop
-    'Q' -> Just Queen
-    'K' -> Just King
-    _   -> Nothing
+readPiece c = lookup (toUpper c) pieceMap
 
 --------------------------------------------------------------------------------
 showEmptySquare :: Index -> Char
