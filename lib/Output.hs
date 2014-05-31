@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
-module Multiplex(
+module Output(
     TextChan, runTextChan', runTextChan, multiplex, mapChan,
     Chan, readChan, writeChan, writeChanList, takeSubChan, feedSubChan,
     takeChan, feedChan, giveChan, feedChanList, giveChanList

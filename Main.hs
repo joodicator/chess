@@ -1,4 +1,4 @@
-import Multiplex
+import Output
 import ChessControl
 import ChessData
 import ChessRules

@@ -11,7 +11,7 @@ import ChessData
 import ChessText
 import ChessRules
 import ChessControl
-import Multiplex
+import Output
 import ChessMinMaxAI
 
 l = 10^5

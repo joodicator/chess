@@ -8,7 +8,7 @@ import Data.List
 import ChessData
 import ChessRules
 import ChessText
-import Multiplex
+import Output
 
 --------------------------------------------------------------------------------
 gameChannel :: NameChan a -> NameChan ()
