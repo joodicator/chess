@@ -2,6 +2,7 @@ import Control.Monad
 import Data.List
 import Data.Function
 import Data.Char
+import Data.Ord
 import Numeric
 import System.IO
 import System.Environment
@@ -14,11 +15,36 @@ import ChessControl
 import Output
 import ChessMinMaxAI
 
-l = 10^5
+depthLimit = 6
 
 main = do
     players <- getPlayers
     runNameChan $ playName initialGame players ANSITerminal
+
+aiPlayer :: Game -> NameChan Move
+aiPlayer game@Game{gBoard=d} = do
+    let (vms,s) = minMaxPlay'' depthLimit game
+    vms'@((_,m):_) <- return $ reverse $ sortBy (compare `on` fst) vms
+    let SearchState{sNodeCount=nodeCount} = s
+    let ws = ["n=" ++ show nodeCount, "m=" ++ show depthLimit]
+    noName . writeChan . unwords $ ws ++ do
+        (v,m) <- vms'
+        return $ "(" ++ showValue v ++ "," ++ showMove d m ++ ")"
+    return m
+ where
+    showValue v = case v of
+        Min            -> "Min"
+        Max            -> "Max"
+        Win (Down n) v -> "Win("  ++ show n ++ "):" ++ show v
+        Lose  v dn     -> "Lose:"  ++ showValue (Value v dn)
+        Draw  v dn     -> "Draw:"  ++ showValue (Value v dn)
+        Cycle v dn     -> "Cycle:" ++ showValue (Value v dn)
+        Value v (Down n)
+            | n == depthLimit -> show v
+            | otherwise       -> show v ++ "(" ++ show n ++ ")"
+    
+humanPlayer :: Game -> NameChan Move
+humanPlayer = nameHuman
 
 getPlayers :: IO (Game -> NameChan Move, Game -> NameChan Move)
 getPlayers = do
@@ -42,24 +68,3 @@ getPlayer spec = case map toLower spec of
     "human" -> Just humanPlayer
     "ai"    -> Just aiPlayer
     _       -> Nothing
-
-humanPlayer = nameHuman
-
-aiPlayer game@Game{gBoard=d} = do
-    let (vms,r,s) = minMaxPlay'' l game
-    vms'@((_,m):_) <- return $ reverse $ sortBy (compare `on` fst) vms
-    let SearchState{nodeCount=nC, leafCount=lC, leafDepthSum=dS,
-                    leafDepthMin=dm, leafDepthMax=dM} = s
-    let ws = ["nC=" ++ show nC ++ " (" ++ show (100 * nC `div` l) ++ "%)",
-              "lC=" ++ show lC]
-    let ws' | lC == 0   = []
-            | otherwise = ["dm=" ++ show dm,
-                           "da=" ++ showFFloatAlt (Just 1)
-                             ((fromIntegral $ dS) / (fromIntegral lC)) "",
-                           "dM=" ++ show dM]
-    noName . writeChan . intercalate ", " $ ws ++ ws'
-    noName . writeChan . unwords $ do
-        (v,m) <- vms'
-        return $ "(" ++ show v ++ "," ++ showMove d m ++ ")"
-    return m
-

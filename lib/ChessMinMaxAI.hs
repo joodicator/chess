@@ -5,6 +5,7 @@ import qualified Data.Set as S
 import Data.Function
 import Data.Maybe
 import Data.List
+import Data.Ord
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.State.Strict
@@ -14,20 +15,18 @@ import ChessData
 import ChessRules
 
 --------------------------------------------------------------------------------
+type MoveCount  = Down Int
 type PieceValue = Int
 
 data Value
-  = Min | Lose | Draw | Cycle PieceValue | Value PieceValue | Win | Max
-  deriving (Eq, Ord)
-
-instance Show Value where
-    show Min       = "Min"
-    show Lose      = "Lose"
-    show Draw      = "Draw"
-    show (Cycle v) = "Cycle " ++ show v
-    show (Value v) = show v
-    show Win       = "Win"
-    show Max       = "Max"
+  = Min
+  | Lose  PieceValue MoveCount
+  | Draw  PieceValue MoveCount
+  | Cycle PieceValue MoveCount
+  | Value PieceValue MoveCount
+  | Win   MoveCount PieceValue
+  | Max
+  deriving (Eq, Ord, Show)
 
 data EqGame = EqGame{
     eBoard   :: Board,
@@ -37,21 +36,13 @@ data EqGame = EqGame{
     deriving (Eq, Ord)
 
 data SearchState = SearchState{
-    searchDepth  :: !Int,
-    nodeCount    :: !Int,
-    leafDepthMin :: !Int,
-    leafDepthMax :: !Int,
-    leafDepthSum :: !Int,
-    leafCount    :: !Int }
+    sMoveLimit :: !Int,
+    sNodeCount :: !Int }
 
-initialState :: SearchState
-initialState = SearchState{
-    searchDepth  = 0,
-    nodeCount    = 0,
-    leafDepthMin = maxBound,
-    leafDepthMax = minBound, 
-    leafDepthSum = 0,
-    leafCount    = 0 }
+initialState :: Int -> SearchState
+initialState moveLimit = SearchState{
+    sMoveLimit = moveLimit,
+    sNodeCount = 0 }
 
 --------------------------------------------------------------------------------
 minMaxPlay :: Monad m => Int -> Game -> m Move
@@ -62,95 +53,86 @@ minMaxPlay l g = do
 minMaxPlay' :: Int -> Game -> Maybe Move
 minMaxPlay' l g@Game{gTurn=pc}
   = case minMaxPlay'' l g of
-        ([], _,_) -> Nothing
-        (vms,_,_) -> Just . snd $ maximumBy (compare `on` fst) vms
+        ([], _) -> Nothing
+        (vms,_) -> Just . snd $ maximumBy (compare `on` fst) vms
 
-minMaxPlay'' :: Int -> Game -> ([(Value,Move)], Int, SearchState)
+minMaxPlay'' :: Int -> Game -> ([(Value,Move)], SearchState)
 minMaxPlay'' l g@Game{gTurn=pc}
-  = (vms,r,s)
+  = runState (bestMove'' (Min,Max) 0 pc g es) (initialState l)
   where
-    ((vms,r),s) = runState (bestMove'' (Min,Max) l pc g es) initialState
     gs = catMaybes $ takeWhile isJust $ iterate (>>= undoMoveGame) (Just g)
     es = S.fromList $ map eqGame $ tail gs
 
 --------------------------------------------------------------------------------
 bestMove' :: (Value,Value)        -- (α,β) if c=pc else (β,α), for α-β pruning.
-          -> Int                  -- Maximum remaining moves to examine.
+          -> Int                  -- Number of moves simulated until this point.
           -> Colour               -- Player for whom value is represented.
           -> Game                 -- Current game state.
           -> S.Set EqGame         -- Previous game states.
-          -> State SearchState    -- Algorithm variables and statistics.
-             (Maybe (Value,Move), -- Move judged optimal for current player.
-              Int)                -- Remaining move examination quota.
-bestMove' p l c g@Game{gTurn=pc} es = do
-    (vms, l') <- bestMove'' p l c g es
+          -> State SearchState    -- Miscellaneous algorithm state.
+             (Maybe (Value,Move)) -- Move judged optimal for current player.
+bestMove' p mc c g@Game{gTurn=pc} es = do
+    vms <- bestMove'' p mc c g es
     case vms of
-        _:_ -> return (Just $ maximumBy (comparePC `on` fst) vms, l')
-        []  -> return (Nothing, l')
+        _:_ -> return $ Just $ maximumBy (comparePC `on` fst) vms
+        []  -> return Nothing
   where
     comparePC u v
       | c == pc   = compare u v
       | otherwise = compare v u
 
 bestMove'' :: (Value,Value) -> Int -> Colour -> Game -> S.Set EqGame
-           -> State SearchState ([(Value,Move)], Int)
-bestMove'' p l c g@Game{gTurn=pc} es
-  = let ms = legalMoves g in evaluate p l ms ([], 0)
+           -> State SearchState [(Value,Move)]
+bestMove'' p mc c g@Game{gTurn=pc} es = do
+    s@SearchState{sMoveLimit=moveLimit} <- get
+    put s{sNodeCount=1+sNodeCount s}
+    case compare mc moveLimit of
+        LT -> evaluate p (mc+1) (legalMoves g)
+        _  -> return []
   where
     comparePC :: Value -> Value -> Ordering
     comparePC u v
       | c == pc   = compare u v
       | otherwise = compare v u
 
-    evaluate :: (Value,Value) -> Int -> [Move] -> ([(Value,Move)], Int)
-             -> State SearchState ([(Value,Move)], Int)
-    evaluate (best,worst) l ms@(m:ms') (vmsA,rA) = do
-        let l'    = min l ((3*l) `div` (2*length ms))
-        modify $ \s -> s{ searchDepth = searchDepth s + 1 }
-        (v,r) <- evaluate' (worst,best) l' m
-        modify $ \s -> s{ searchDepth = searchDepth s - 1 }
-        let r'    = l - l' + r
-            best' = maximumBy comparePC [best,v]
+    evaluate :: (Value,Value) -> Int -> [Move]
+             -> State SearchState [(Value,Move)]
+    evaluate (best,worst) mc ms@(m:ms') = do
+        v <- evaluate' (worst,best) mc m
+        let best' = maximumBy comparePC [best,v]
             p'    = (best',worst)
         case comparePC v worst of
-            LT -> evaluate p' r' ms' ((v,m):vmsA, rA)
-            _  -> return ((v,m):vmsA, r'+rA)
-    evaluate _ l [] (vmsA,rA)
-      = return (vmsA,l+rA)
+            LT -> ((v,m) :) <$> evaluate p' mc ms'
+            _  -> return [(v,m)]
+    evaluate _ _ []
+      = return []
 
-    evaluate' :: (Value,Value) -> Int -> Move -> State SearchState (Value, Int)
-    evaluate' p l m = do
-        modify $ \s -> s{ nodeCount = 1 + nodeCount s }
-        case v' of
-            _ | not toCycle && l' > 0 -> do
-                (mm,r) <- bestMove' p l' c g' (S.insert e es)
-                return (maybe v' fst mm, r)
-            _ | not toCycle -> do
-                modify $ \s -> s{
-                    leafCount    = 1 + leafCount s,
-                    leafDepthSum = searchDepth s + leafDepthSum s,
-                    leafDepthMin = min (searchDepth s) (leafDepthMin s),
-                    leafDepthMax = max (searchDepth s) (leafDepthMax s)}
-                return (v', l')
-            Value v'' | not fromCycle ->
-                return (Cycle v'', l')
-            _ | otherwise ->
-                return (v', l')
+    evaluate' :: (Value,Value) -> Int -> Move -> State SearchState Value
+    evaluate' p mc m = case v' of
+        _ | not toCycle -> do
+            mvm <- bestMove' p mc c g' (S.insert e es)
+            return $ maybe v' fst mvm
+        Value v'' mc | not fromCycle -> do
+            return $ Cycle v'' mc
+        _ | otherwise -> do
+            return v'
       where
         toCycle   = S.member (eqGame g') es
         fromCycle = S.member e es
-        l'        = l - 1
         e         = eqGame g
         g'        = doMoveGame m g
-        v'        = gameValue c g'
+        v'        = gameValue c mc g'
 
 --------------------------------------------------------------------------------
-gameValue :: Colour -> Game -> Value
-gameValue c g = case result g of
-    Just Checkmate{rWinner=wc} | wc==c  -> Win
-    Just Stalemate                      -> Draw
-    Nothing                             -> Value $ boardValue c g
-    Just Checkmate{}                    -> Lose
+gameValue :: Colour -> Int -> Game -> Value
+gameValue c mc g = case result g of
+    Just Checkmate{rWinner=wc} | wc==c  -> Win   dmc v
+    Just Stalemate                      -> Draw  v dmc
+    Nothing                             -> Value v dmc
+    Just Checkmate{}                    -> Lose  v dmc
+  where
+    dmc = Down mc
+    v   = boardValue c g
 
 boardValue :: Colour -> Game -> PieceValue
 boardValue c game@Game{gBoard=board}
