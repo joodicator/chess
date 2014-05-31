@@ -38,8 +38,9 @@ gameChannelEnd = do
 
 --------------------------------------------------------------------------------
 type NamePlayer = Game -> NameChan Move
-playName :: Game -> (NamePlayer,NamePlayer) -> NameChan ()
-playName game players = play game players writeNameGame >>= writeNameResult
+playName :: Game -> (NamePlayer,NamePlayer) -> Out (NameChan ())
+playName game players o
+  = play game players (writeNameGame o) >>= writeNameResult
 
 nameHuman :: Game -> NameChan Move
 nameHuman game = do
@@ -48,8 +49,8 @@ nameHuman game = do
         Right m -> return m
         Left e  -> writeChan (mn, "Error: " ++ e ++ ".") >> nameHuman game
 
-writeNameGame :: Game -> NameChan ()
-writeNameGame game = noName $ writeChanList (showGameLines game)
+writeNameGame :: Out (Game -> NameChan ())
+writeNameGame o game = noName $ writeChanList (showGameLines game o)
 
 writeNameResult :: (Game,Result) -> NameChan ()
 writeNameResult r@(_,Checkmate w)

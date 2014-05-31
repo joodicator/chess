@@ -18,7 +18,7 @@ l = 10^5
 
 main = do
     players <- getPlayers
-    runNameChan $ playName initialGame players
+    runNameChan $ playName initialGame players ANSITerminal
 
 getPlayers :: IO (Game -> NameChan Move, Game -> NameChan Move)
 getPlayers = do

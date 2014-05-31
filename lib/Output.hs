@@ -1,5 +1,6 @@
 --------------------------------------------------------------------------------
 module Output(
+    Output(..), Out, plain, bold,
     TextChan, runTextChan', runTextChan, multiplex, mapChan,
     Chan, readChan, writeChan, writeChanList, takeSubChan, feedSubChan,
     takeChan, feedChan, giveChan, feedChanList, giveChanList
@@ -12,6 +13,22 @@ import Data.Maybe
 import Data.Char
 import qualified Data.Map as M
 import System.IO
+
+--------------------------------------------------------------------------------
+data Output
+  = PlainText | ANSITerminal | IRCMessage
+  deriving (Eq, Ord, Enum, Show)
+
+type Out a = Output -> a
+
+plain :: a -> Out a
+plain = const
+
+bold :: String -> Out String
+bold s o = case o of
+    ANSITerminal -> "\ESC[1m" ++ s ++ "\ESC[m"
+    IRCMessage   -> "\STX" ++ s ++ "\STX"
+    _            -> s
 
 --------------------------------------------------------------------------------
 type TextChan a = Chan String String a

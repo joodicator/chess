@@ -13,6 +13,7 @@ import Standard
 import ChessData
 import ChessBoard
 import ChessRules
+import Output
 
 --------------------------------------------------------------------------------
 type UserError    = String
@@ -228,30 +229,39 @@ readBoardLines lines = fromList $ do
     return ((r,f), readSquare char)
 
 --------------------------------------------------------------------------------
-showGame :: Game -> String
-showGame = unlines . showGameLines
+showGame :: Game -> Out String
+showGame = (fmap unlines) . showGameLines
 
 printGame :: Game -> IO ()
-printGame = mapM_ putStrLn . showGameLines
+printGame = mapM_ putStrLn . ($ ANSITerminal) . showGameLines
 
-showBoard :: Board -> String
-showBoard = unlines . showBoardLines
+showBoard :: Board -> Out String
+showBoard = (fmap unlines) . showBoardLines
 
 printBoard :: Board -> IO ()
-printBoard = mapM_ putStrLn . showBoardLines
+printBoard = mapM_ putStrLn . ($ ANSITerminal) . showBoardLines
 
-showGameLines :: Game -> [String]
+showGameLines :: Game -> Out [String]
 showGameLines game@Game{gBoard=board, gTurn=pc, gMoves=moves}
-  = joinColumns [boardLines, topLines ++ legendLines ++ bottomLines]
+  = joinColumns columns
   where
-    boardLines    = showBoardLines board
-    topLines      = [noteLine Black, captureLine Black, ""]
-    bottomLines   = ["", captureLine White, noteLine White]
-    legendLines   = showLegendLines legendHeight
-    legendHeight  = length boardLines - length topLines - length bottomLines
-    noteLine c    = show c ++ noteLine' c
-    noteLine' c   = if c==pc then playerLine else opponentLine
-    captureLine c = case filter (\(c',_) -> c' /= c) (capturedPieces game) of
+    columns o
+      = [boardLines, topLines ++ legendLines ++ bottomLines]
+      where
+        boardLines   = showBoardLines' marked board o
+        legendLines  = showLegendLines legendHeight
+        legendHeight = length boardLines - length topLines - length bottomLines
+        marked = case moves of
+            Move    { mPath=(_,j) } : _              -> [j]
+            Promote { mPath=(_,j) } : _              -> [j]
+            Castle  { mKing=(_,k), mRook=(_,j) } : _ -> [k,j]
+            Passant { mPath=(_,j) } : _              -> [j]
+            []                                       -> []
+    topLines       = [noteLine Black, captureLine Black, ""]
+    bottomLines    = ["", captureLine White, noteLine White]
+    noteLine c     = show c ++ noteLine' c
+    noteLine' c    = if c==pc then playerLine else opponentLine
+    captureLine c  = case filter (\(c',_) -> c' /= c) (capturedPieces game) of
         [] -> ""
         cs -> "Captured: " ++ reverse (map showColourPiece cs)
     playerLine = case (canMove game, inCheck game) of
@@ -263,40 +273,49 @@ showGameLines game@Game{gBoard=board, gTurn=pc, gMoves=moves}
         m:_ -> ": " ++ showMoveLong (undoMoveBoard m board) m
         []  -> ""
 
-showBoardLines :: Board -> [String]
-showBoardLines b
-  = map (intersperse ' ') $ fileRow : map rankRow (reverse ranks) ++ [fileRow]
+showBoardLines :: Board -> Out [String]
+showBoardLines = showBoardLines' []
+
+showBoardLines' :: [Index] -> Board -> Out [String]
+showBoardLines' marked d o
+  = fileRow : map rankRow (reverse ranks) ++ [fileRow]
   where
-    rankRow r  = [showRank r] ++ rankRow' r ++ [showRank r]
-    rankRow' r = [showSquare (r,f) (b ! (r,f)) | f <- files]
-    fileRow    = ' ' : map showFile files
+    fileRow     = bold (intersperse ' ' $ ' ' : map showFile files) o
+    rankRow     = intercalate " " . rankRow'
+    rankRow'  r = bold [showRank r] o : rankRow'' r ++ [bold [showRank r] o]
+    rankRow'' r = do
+        f <- files
+        let style = if (r,f) `elem` marked then bold else plain
+        return $ style [showSquare (r,f) (d ! (r,f))] o
 
 showLegendLines :: Int -> [String]
 showLegendLines n
-  = joinColumns (divide n entries)
+  = joinColumns (plain $ divide n entries) PlainText
   where
     entries = map pieceLegend [minBound ..] ++ map emptyLegend [White,Black]
-              
     emptyLegend c = showEmptySquare' c : ' ' : map toLower (show c)
     pieceLegend p = showColourPiece (White,p) : showColourPiece (Black,p)
                   : ' ' : map toLower (show p)
 
 --------------------------------------------------------------------------------
-joinColumns :: [[String]] -> [String]
+joinColumns :: Out [[String]] -> Out [String]
 joinColumns = joinColumns' "  "
 
-joinColumns' :: String -> [[String]] -> [String]
-joinColumns' sep cols
+joinColumns' :: String -> Out [[String]] -> Out [String]
+joinColumns' sep cols o
   = map (dropWhileEnd (== ' ') . concat . intersperse sep) padRows
   where
-    padRows = map (zipWith (pad ' ') widths) rows
+    padRows = map (zipWith padZipped pWidths) rows
+    pWidths = map (maximum . map (length . snd)) zipCols
     rows    = transpose padCols
-    padCols = map (pad "" height) cols
-    height  = maximum (map length cols)
-    widths  = map (maximum . map length) cols
+    padCols = map (pad ("","") height) zipCols
+    height  = maximum (map length zipCols)
+    zipCols = zipWith zip (cols o) (cols PlainText)
     pad x n = take n . (++ repeat x)
+    padZipped n (os,ps) = take (n + length os - length ps) (os ++ repeat ' ')
 
 divide :: Int -> [a] -> [[a]]
 divide n _ | n<1 = error "divide with non-positive length"
 divide _ []      = []
 divide n xs      = let (hs,ts) = splitAt n xs in hs : divide n ts
+
