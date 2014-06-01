@@ -13,6 +13,7 @@ import Control.Monad.Trans.State.Strict
 import qualified ChessBoard as B
 import ChessData
 import ChessRules
+import Standard
 
 --------------------------------------------------------------------------------
 type MoveCount  = Down Int

@@ -8,11 +8,12 @@ import System.IO
 import System.Environment
 import System.Exit
 
+import Standard
+import Output
 import ChessData
 import ChessText
 import ChessRules
 import ChessControl
-import Output
 import ChessMinMaxAI
 
 depthLimit = 6

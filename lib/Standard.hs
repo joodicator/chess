@@ -15,4 +15,10 @@ instance Monad (Either e) where
     Left  x >>= f = Left x
     Right y >>= f = f y
 
+newtype Down a = Down a deriving (Eq, Read, Show)
+
+instance Ord a => Ord (Down a) where
+    compare (Down x) (Down y)
+      = case compare x y of LT -> GT; EQ -> EQ; GT -> LT
+
 #endif
