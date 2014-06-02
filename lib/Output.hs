@@ -1,6 +1,6 @@
 --------------------------------------------------------------------------------
 module Output(
-    Output(..), Out, plain, bold,
+    Output(..), Out, OColour(..), plain, bold, colour,
     TextChan, runTextChan', runTextChan, multiplex, mapChan,
     Chan, readChan, writeChan, writeChanList, takeSubChan, feedSubChan,
     takeChan, feedChan, giveChan, feedChanList, giveChanList
@@ -17,7 +17,7 @@ import System.IO
 --------------------------------------------------------------------------------
 data Output
   = PlainText | ANSITerminal | IRCMessage
-  deriving (Eq, Ord, Enum, Show)
+  deriving Show
 
 type Out a = Output -> a
 
@@ -26,9 +26,44 @@ plain = const
 
 bold :: String -> Out String
 bold s o = case o of
-    ANSITerminal -> "\ESC[1m" ++ s ++ "\ESC[m"
-    IRCMessage   -> "\STX" ++ s ++ "\STX"
+    ANSITerminal -> "\27[1m" ++ s ++ "\27[21m"
+    IRCMessage   -> "\2" ++ s ++ "\2"
     _            -> s
+
+data OColour
+  = LRed | LYellow | LGreen | LCyan | LBlue | LMagenta | LGrey | OWhite
+  | DRed | DYellow | DGreen | DCyan | DBlue | DMagenta | DGrey | OBlack
+  deriving (Show, Enum, Bounded)
+
+colour :: (OColour, Maybe OColour) -> String -> Out String
+colour (f,Just b)  s IRCMessage
+  = "\3" ++ ircCC' f ++ "," ++ ircCC' b ++ s ++ "\3"
+colour (f,Nothing) s IRCMessage
+  = "\3" ++ ircCC' f ++ s ++ "\3"
+colour (f,Just b)  s ANSITerminal
+  = "\27[" ++ show (ansiCC f) ++ ";"
+           ++ show (ansiCC b + 10) ++ "m" ++ s ++ "\27[39;49m"
+colour (f,Nothing) s ANSITerminal
+  = "\27[" ++ show (ansiCC f)  ++ "m" ++ s ++ "\27[39m"
+colour _ s _
+  = s
+
+ircCC' :: OColour -> String
+ircCC' = reverse . take 2 . (++ repeat '0') . reverse . show
+
+ircCC :: OColour -> Int
+ircCC c = case c of
+    LRed     -> 04;    LYellow  -> 08;    LGreen   -> 09;    LCyan    -> 14;
+    DRed     -> 05;    DYellow  -> 07;    DGreen   -> 03;    DCyan    -> 10;
+    LBlue    -> 12;    LMagenta -> 13;    LGrey    -> 15;    OWhite   -> 00;
+    DBlue    -> 02;    DMagenta -> 06;    DGrey    -> 14;    OBlack   -> 01
+
+ansiCC :: OColour -> Int
+ansiCC c = case c of
+    LRed     -> 91;    LYellow  -> 93;    LGreen   -> 92;    LCyan    -> 96;
+    DRed     -> 31;    DYellow  -> 33;    DGreen   -> 32;    DCyan    -> 36;
+    LBlue    -> 94;    LMagenta -> 95;    LGrey    -> 37;    OWhite   -> 97;
+    DBlue    -> 34;    DMagenta -> 35;    DGrey    -> 90;    OBlack   -> 30
 
 --------------------------------------------------------------------------------
 type TextChan a = Chan String String a

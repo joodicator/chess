@@ -30,8 +30,8 @@ inBoard (r,f) = r `elem` ranks && f `elem` files
 
 squareColour :: Index -> Colour
 squareColour (R r, F f)
-  | odd (r+f) = Black
-  | otherwise = White
+  | odd (r+f) = White
+  | otherwise = Black
 
 --------------------------------------------------------------------------------
 data Colour
