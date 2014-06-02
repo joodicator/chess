@@ -1,8 +1,10 @@
 import Control.Monad
+import Control.Applicative
 import Data.List
 import Data.Function
 import Data.Char
 import Data.Ord
+import Data.Maybe
 import Numeric
 import System.IO
 import System.Environment
@@ -16,21 +18,25 @@ import ChessRules
 import ChessControl
 import ChessMinMaxAI
 
-depthLimit = 6
+defaultDepthLimit = 5 :: Int
 
 main = do
-    players <- getPlayers
+    depthLimit <- getDepthLimit
+    players <- getPlayers depthLimit
     runNameChan $ playName initialGame players ANSITerminal
 
-aiPlayer :: Game -> NameChan Move
-aiPlayer game@Game{gBoard=d} = do
+aiPlayer :: Int -> Game -> NameChan Move
+aiPlayer depthLimit game@Game{gBoard=d} = do
     let (vms,s) = minMaxPlay'' depthLimit game
-    vms'@((_,m):_) <- return $ reverse $ sortBy (compare `on` fst) vms
+    vms'@((_,(_,m):_):_) <- return $ reverse $ sortBy (compare `on` fst) vms
     let SearchState{sNodeCount=nodeCount} = s
-    let ws = ["n=" ++ show nodeCount, "m=" ++ show depthLimit]
-    noName . writeChan . unwords $ ws ++ do
-        (v,m) <- vms'
-        return $ "(" ++ showValue v ++ "," ++ showMove d m ++ ")"
+    noName . writeChan $ unwords ["n=" ++ show nodeCount, "m=" ++ show depthLimit]
+    noName . writeChanList $ do
+        (v,ms) <- vms'
+        let sms = do
+            (g,m) <- ms
+            return $ showMove (gBoard g) m
+        return $ showValue v ++ ": " ++ intercalate ", " sms
     return m
  where
     showValue v = case v of
@@ -44,28 +50,40 @@ aiPlayer game@Game{gBoard=d} = do
             | n == depthLimit -> show v
             | otherwise       -> show v ++ "(" ++ show n ++ ")"
     
-humanPlayer :: Game -> NameChan Move
-humanPlayer = nameHuman
+humanPlayer :: Int -> Game -> NameChan Move
+humanPlayer depthLimit game = do
+    (mn, line) <- readChan
+    case map toLower line of
+        "ai" -> aiPlayer depthLimit game
+        _    -> id =<< feedSubChan (mn, line) (nameHuman game)
 
-getPlayers :: IO (Game -> NameChan Move, Game -> NameChan Move)
-getPlayers = do
-    args <- getArgs
+getPlayers :: Int -> IO (Game -> NameChan Move, Game -> NameChan Move)
+getPlayers depthLimit = do
+    args <- filter (not . isPrefixOf "--") <$> getArgs
     case args of
         [white, black] ->
-            case (getPlayer white, getPlayer black) of
+            case (getPlayer depthLimit white, getPlayer depthLimit black) of
                 (Just whiteP, Just blackP) -> return (whiteP, blackP)
                 _                          -> exitUsage
-        [] -> return (humanPlayer, aiPlayer)
+        [] -> return (humanPlayer depthLimit, aiPlayer depthLimit)
         _  -> exitUsage
+
+getPlayer :: Int -> String -> Maybe (Game -> NameChan Move)
+getPlayer depthLimit spec = case map toLower spec of
+    s@(_:_) | s `isPrefixOf` "human" -> Just $ humanPlayer depthLimit
+    s@(_:_) | s `isPrefixOf` "ai"    -> Just $ aiPlayer depthLimit
+    _                                -> Nothing
+
+getDepthLimit :: IO Int
+getDepthLimit = do
+    args <- getArgs
+    return . fromMaybe defaultDepthLimit . listToMaybe $ do
+        arg <- reverse args
+        Just arg' <- return $ stripPrefix "--depth=" arg
+        return (read arg')
 
 exitUsage :: IO a
 exitUsage = do
     progName <- getProgName
     hPutStrLn stderr $ "Usage: " ++ progName ++ " [(ai|human) (ai|human)]"
     exitFailure
-
-getPlayer :: String -> Maybe (Game -> NameChan Move)
-getPlayer spec = case map toLower spec of
-    "human" -> Just humanPlayer
-    "ai"    -> Just aiPlayer
-    _       -> Nothing
