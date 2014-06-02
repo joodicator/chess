@@ -285,7 +285,9 @@ showBoardLines' marked d o
     rankRow'  r = bold [showRank r] o : rankRow'' r ++ [bold [showRank r] o]
     rankRow'' r = do
         f <- files
-        let style = if (r,f) `elem` marked then bold else plain
+        let style = case (r,f) `elem` marked of
+                        True  -> (>>= colour (LRed,Nothing)) . bold
+                        False -> plain
         return $ style [showSquare (r,f) (d ! (r,f))] o
 
 showLegendLines :: Int -> [String]
