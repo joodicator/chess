@@ -8,11 +8,11 @@ _GHCFLAGS := $(GHCFLAGS) -O2 -hidir $(OBJDIR) -odir $(OBJDIR) -i$(LIBDIR)
 $(BINDIR)/Main: $(SRCDIR)/Main.hs $(LIBDIR)/*
 	ghc --make $(_GHCFLAGS) -o $@ $<
 
-$(BINDIR)/ChessMinMaxAITest: $(SRCDIR)/ChessMinMaxAITest.hs $(LIBDIR)/*
+$(BINDIR)/Server: $(SRCDIR)/Server.hs $(LIBDIR)/*
 	ghc --make $(_GHCFLAGS) -o $@ $<
 
-.phony: aitest
-aitest: $(BINDIR)/ChessMinMaxAITest
+.phony: server
+server: $(BINDIR)/Server
 
 .phony: clean
 clean:
