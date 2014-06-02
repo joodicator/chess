@@ -4,13 +4,15 @@ module ChessBoard(
     listAll,        fromList,   update,     indices
 ) where
 
-import qualified Data.Map as M
+import qualified ListMap as M
 import Data.List
+import Control.Applicative hiding (empty)
+
 import ChessData
 
-type Map = M.Map Index Piece
+type Map    = M.Map Index (Colour,Piece)
 type Update = (Index,Maybe (Colour,Piece))
-data Board = Board{ white::Map, black::Map } deriving (Eq, Ord)
+data Board  = Board{ white::Map, black::Map } deriving (Eq, Ord)
 
 instance Show Board where show = const "Board"
 
@@ -22,24 +24,22 @@ empty = Board{white=M.empty, black=M.empty}
 
 get :: Board -> Index -> Maybe (Colour,Piece)
 get Board{white=w, black=b} i
-  = case (M.lookup i w, M.lookup i b) of
-      (Just p, _) -> Just (White,p)
-      (_, Just p) -> Just (Black,p)
-      _           -> Nothing
+  = M.lookup i w <|> M.lookup i b
 
 put :: Board -> Index -> Maybe (Colour,Piece) -> Board
 put d@Board{white=w, black=b} i e
   = case e of
-      Just (White,p) -> d{white=M.insert i p w, black=M.delete i   b}
-      Just (Black,p) -> d{white=M.delete i   w, black=M.insert i p b}
-      Nothing        -> d{white=M.delete i   w, black=M.delete i   b}
+      Just e@(White,_) -> d{white=M.insert i e w, black=M.delete i   b}
+      Just e@(Black,_) -> d{white=M.delete i   w, black=M.insert i e b}
+      Nothing          -> d{white=M.delete i   w, black=M.delete i   b}
 
 list :: Colour -> Board -> [(Index,(Colour,Piece))]
-list White Board{white=w} = [(i,(White,p)) | (i,p) <- M.toList w]
-list Black Board{black=b} = [(i,(Black,p)) | (i,p) <- M.toList b]
+list White Board{white=w} = M.toList w
+list Black Board{black=b} = M.toList b
 
 listAll :: Board -> [(Index,(Colour,Piece))]
-listAll d = list White d ++ list Black d
+listAll Board{white=w, black=b}
+  = M.toList w ++ M.toList b
 
 fromList :: [(Index,Maybe (Colour,Piece))] -> Board
 fromList = update empty
