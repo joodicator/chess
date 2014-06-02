@@ -31,11 +31,12 @@ promotions = [Rook, Knight, Bishop, Queen]
 
 --------------------------------------------------------------------------------
 base :: Colour -> Rank
-base White = head ranks
-base Black = last ranks
+base White = firstRank
+base Black = lastRank
 
 top :: Colour -> Rank
-top = base . oppose
+top White = lastRank
+top Black = firstRank
 
 fore :: Colour -> Rank
 fore White = 1

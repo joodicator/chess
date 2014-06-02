@@ -22,11 +22,16 @@ type Path = (Index,Index)
 ranks = map R [1..8] :: [Rank]
 files = map F [1..8] :: [File]
 
+(firstRank, lastRank) = (head ranks, last ranks)
+(firstFile, lastFile) = (head files, last files)
+
 rank = fst :: Index -> Rank
 file = snd :: Index -> File
 
 inBoard :: Index -> Bool
-inBoard (r,f) = r `elem` ranks && f `elem` files
+inBoard (r,f)
+  = firstRank <= r && r <= lastRank &&
+    firstFile <= f && f <= lastFile
 
 squareColour :: Index -> Colour
 squareColour (R r, F f)
