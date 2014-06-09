@@ -4,7 +4,7 @@ module ChessBoard(
     listAll,        fromList,   update,     indices
 ) where
 
-import qualified ListMap as M
+import qualified Data.Map.Strict as M
 import Data.List
 import Control.Applicative hiding (empty)
 

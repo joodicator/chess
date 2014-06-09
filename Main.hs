@@ -18,7 +18,7 @@ import ChessRules
 import ChessControl
 import ChessMinMaxAI
 
-defaultDepthLimit = 5 :: Int
+defaultDepthLimit = 4 :: Int
 
 main = do
     depthLimit <- getDepthLimit
