@@ -49,7 +49,7 @@ colour _ s _
   = s
 
 ircCC' :: OColour -> String
-ircCC' = reverse . take 2 . (++ repeat '0') . reverse . show
+ircCC' = reverse . take 2 . (++ repeat '0') . reverse . show . ircCC
 
 ircCC :: OColour -> Int
 ircCC c = case c of

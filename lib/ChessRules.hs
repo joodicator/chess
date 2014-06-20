@@ -232,7 +232,7 @@ tryPassant' (ip,t) Game{gBoard=d, gTurn=pc, gMoves=ms} = do
 tryPassant'' :: (Colour,Piece,Path) -> Board -> Maybe Path
 tryPassant'' (ic,ip,(i@(ri,fi),j@(rj,fj))) d = do
     guard (ip==Pawn && rj==ri+fore ic && abs(fj-fi)==1)
-    guard (isNothing (d!j) && rj==top ic-2)
+    guard (isNothing (d!j) && rj==top ic-2*fore ic)
     let t'@(i',j') = ((rj+fore ic,fj),(rj-fore ic,fj))
     (jc',Pawn) <- d!j'; guard (jc'/=ic)
     return t'

@@ -280,15 +280,24 @@ showBoardLines' :: [Index] -> Board -> Out [String]
 showBoardLines' marked d o
   = fileRow : map rankRow (reverse ranks) ++ [fileRow]
   where
-    fileRow     = bold (intersperse ' ' $ ' ' : map showFile files) o
+    edge        = colour (DGrey,Nothing)
+    fileRow     = edge (intersperse ' ' $ ' ' : map showFile files) o
     rankRow     = intercalate " " . rankRow'
-    rankRow'  r = bold [showRank r] o : rankRow'' r ++ [bold [showRank r] o]
+    rankRow'  r = edge [showRank r] o : rankRow'' r ++ [edge [showRank r] o]
     rankRow'' r = do
         f <- files
-        let style = case (r,f) `elem` marked of
-                        True  -> (>>= colour (LRed,Nothing)) . bold
-                        False -> plain
-        return $ style [showSquare (r,f) (d ! (r,f))] o
+        let mcp = (d ! (r,f))
+        return $! if (r,f) `elem` marked
+            then colour (LRed,Nothing) [showSquare (r,f) mcp] o
+            else showSquareOut (r,f) mcp o
+
+showSquareOut :: Index -> Maybe (Colour,Piece) -> Out String
+showSquareOut i mcp
+  = style [showSquare i mcp]
+  where
+    style = case mcp of
+        Nothing -> colour (DGrey,Nothing)
+        Just _  -> plain
 
 showLegendLines :: Int -> [String]
 showLegendLines n
