@@ -180,10 +180,10 @@ readFileIndex = flip lookup (map swap fileChars)
 
 --------------------------------------------------------------------------------
 pieceMap = [
-    ('S',Pawn),     -- Soldier (Finnish: Sotilas)
+    ('P',Pawn),
     ('R',Rook),
-    ('N',Knight),   -- kNight
-    ('L',Bishop),   -- Loper (German: Läufer, Danish: Løber, Finnish: Lähetti)
+    ('N',Knight),
+    ('B',Bishop),
     ('Q',Queen),
     ('K',King)]
 
@@ -191,15 +191,15 @@ showPiece :: Piece -> Char
 showPiece p = fromJust $ lookup p (map swap pieceMap)
 
 readPiece :: Char -> Maybe Piece
-readPiece c = lookup (toUpper c) pieceMap
+readPiece c = lookup c pieceMap
 
 --------------------------------------------------------------------------------
 showEmptySquare :: Index -> Char
 showEmptySquare = showEmptySquare' . squareColour
 
 showEmptySquare' :: Colour -> Char
-showEmptySquare' Black = '+'
-showEmptySquare' White = '.'
+showEmptySquare' Black = ' '
+showEmptySquare' White = ' '
 
 showColourPiece :: (Colour,Piece) -> Char
 showColourPiece (c,p)
@@ -224,8 +224,8 @@ readBoard = readBoardLines . lines
 
 readBoardLines :: [String] -> Board
 readBoardLines lines = fromList $ do
-    (r,line) <- zip (reverse ranks) (drop 1 lines)
-    (f,char) <- zip files (filter (/= ' ') (drop 1 line))
+    (r,line) <- zip (reverse ranks) lines
+    (f,char) <- zip files (filter (not . (`elem` "[ ]")) line)
     return ((r,f), readSquare char)
 
 --------------------------------------------------------------------------------
@@ -249,7 +249,7 @@ showGameLines game@Game{gBoard=board, gTurn=pc, gMoves=moves}
       = [boardLines, topLines ++ legendLines ++ bottomLines]
       where
         boardLines   = showBoardLines' marked board o
-        legendLines  = showLegendLines legendHeight
+        legendLines  = replicate legendHeight ""
         legendHeight = length boardLines - length topLines - length bottomLines
         marked = case moves of
             Move    { mPath=(_,j) } : _              -> [j]
@@ -257,8 +257,8 @@ showGameLines game@Game{gBoard=board, gTurn=pc, gMoves=moves}
             Castle  { mKing=(_,k), mRook=(_,j) } : _ -> [k,j]
             Passant { mPath=(_,j) } : _              -> [j]
             []                                       -> []
-    topLines       = [noteLine Black, captureLine Black, ""]
-    bottomLines    = ["", captureLine White, noteLine White]
+    topLines       = [noteLine Black, captureLine Black]
+    bottomLines    = [captureLine White, noteLine White]
     noteLine c     = show c ++ noteLine' c
     noteLine' c    = if c==pc then playerLine else opponentLine
     captureLine c  = case filter (\(c',_) -> c' /= c) (capturedPieces game) of
@@ -278,13 +278,11 @@ showBoardLines = showBoardLines' []
 
 showBoardLines' :: [Index] -> Board -> Out [String]
 showBoardLines' marked d o
-  = fileRow : map rankRow (reverse ranks) ++ [fileRow]
+  = map rankRow (reverse ranks)
   where
-    edge        = colour (DGrey,Nothing)
-    fileRow     = edge (intersperse ' ' $ ' ' : map showFile files) o
-    rankRow     = intercalate " " . rankRow'
-    rankRow'  r = edge [showRank r] o : rankRow'' r ++ [edge [showRank r] o]
-    rankRow'' r = do
+    edge       = colour (DGrey,Nothing)
+    rankRow r  = concat ["[" ++ c ++ "]" | c <- rankRow' r]
+    rankRow' r = do
         f <- files
         let mcp = (d ! (r,f))
         return $! if (r,f) `elem` marked
@@ -298,15 +296,6 @@ showSquareOut i mcp
     style = case mcp of
         Nothing -> colour (DGrey,Nothing)
         Just _  -> plain
-
-showLegendLines :: Int -> [String]
-showLegendLines n
-  = joinColumns (plain $ divide n entries) PlainText
-  where
-    entries = map pieceLegend [minBound ..] ++ map emptyLegend [White,Black]
-    emptyLegend c = showEmptySquare' c : ' ' : map toLower (show c)
-    pieceLegend p = showColourPiece (White,p) : showColourPiece (Black,p)
-                  : ' ' : map toLower (show p)
 
 --------------------------------------------------------------------------------
 joinColumns :: Out [[String]] -> Out [String]
