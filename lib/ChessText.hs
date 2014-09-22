@@ -74,9 +74,9 @@ readMoveSpec Game{gBoard=d, gTurn=pc} s
   where
     move :: String -> Maybe (UserErrorE ExMoveSpec)
     move s = do
-        (mip,s)        <- trimE (option $ char readPiece) s
+        (mip,s)        <- trimE (option $ char readPieceCS) s
         ((mi,j,isC),s) <- moveFrom s <|> moveTo (Nothing,Nothing) s
-        (mpp,s)        <- trimS (option $ char readPiece) s
+        (mpp,s)        <- trimS (option $ char readPieceCS) s
         (mIsP,s)       <- trimS (option $ word "e.p.") s
         (_,[])         <- space s
         return (move' (mi,j,mip,mpp,isC,isJust mIsP))
@@ -191,7 +191,10 @@ showPiece :: Piece -> Char
 showPiece p = fromJust $ lookup p (map swap pieceMap)
 
 readPiece :: Char -> Maybe Piece
-readPiece c = lookup c pieceMap
+readPiece = readPieceCS . toUpper
+
+readPieceCS :: Char -> Maybe Piece
+readPieceCS c = lookup c pieceMap
 
 --------------------------------------------------------------------------------
 showEmptySquare :: Index -> Char
@@ -248,7 +251,7 @@ showGameLines game@Game{gBoard=board, gTurn=pc, gMoves=moves}
     columns o
       = [boardLines, topLines ++ legendLines ++ bottomLines]
       where
-        boardLines   = showBoardLines' marked board o
+        boardLines   = showBoardLines' pc marked board o
         legendLines  = replicate legendHeight ""
         legendHeight = length boardLines - length topLines - length bottomLines
         marked = case moves of
@@ -257,33 +260,36 @@ showGameLines game@Game{gBoard=board, gTurn=pc, gMoves=moves}
             Castle  { mKing=(_,k), mRook=(_,j) } : _ -> [k,j]
             Passant { mPath=(_,j) } : _              -> [j]
             []                                       -> []
-    topLines       = [noteLine Black, captureLine Black]
-    bottomLines    = [captureLine White, noteLine White]
-    noteLine c     = show c ++ noteLine' c
-    noteLine' c    = if c==pc then playerLine else opponentLine
+    topLines       = ["", noteLine (oppose pc), captureLine (oppose pc)]
+    bottomLines    = [captureLine pc, noteLine pc, ""]
+    noteLine c     = if c==pc then playerLine else opponentLine
     captureLine c  = case filter (\(c',_) -> c' /= c) (capturedPieces game) of
         [] -> ""
         cs -> "Captured: " ++ reverse (map showColourPiece cs)
     playerLine = case (canMove game, inCheck game) of
-        (True, False)  -> " to play."
-        (True, True)   -> " to play (in check)."
-        (False, True)  -> ": checkmate."
-        (False, False) -> ": stalemate."
+        (True, False)  -> show pc ++ " to play."
+        (True, True)   -> show pc ++ " to play (in check)."
+        (False, True)  -> show pc ++ ": checkmate."
+        (False, False) -> show pc ++ ": stalemate."
     opponentLine = case moves of
-        m:_ -> ": " ++ showMoveLong (undoMoveBoard m board) m
+        m:_ -> show (oppose pc) ++ ": " ++ showMoveLong (undoMoveBoard m board) m
         []  -> ""
 
 showBoardLines :: Board -> Out [String]
-showBoardLines = showBoardLines' []
+showBoardLines = showBoardLines' White []
 
-showBoardLines' :: [Index] -> Board -> Out [String]
-showBoardLines' marked d o
-  = map rankRow (reverse ranks)
+showBoardLines' :: Colour -> [Index] -> Board -> Out [String]
+showBoardLines' pc marked d o
+  = [topRow] ++ intersperse middleRow rankRows ++ [bottomRow]
   where
+    topRow     = "┌" ++ intercalate "┬" (map (const "───") files) ++ "┐"
+    middleRow  = "├" ++ intercalate "┼" (map (const "───") files) ++ "┤"
+    bottomRow  = "└" ++ intercalate "┴" (map (const "───") files) ++ "┘"
+    rankRows   = map rankRow $ case pc of Black -> ranks; White -> reverse ranks
     edge       = colour (DGrey,Nothing)
-    rankRow r  = concat ["[" ++ c ++ "]" | c <- rankRow' r]
+    rankRow  r = "│ " ++ intercalate " │ " (rankRow' r) ++ " │"
     rankRow' r = do
-        f <- files
+        f <- case pc of Black -> reverse files; White -> files
         let mcp = (d ! (r,f))
         return $! if (r,f) `elem` marked
             then colour (LRed,Nothing) [showSquare (r,f) mcp] o
@@ -318,4 +324,3 @@ divide :: Int -> [a] -> [[a]]
 divide n _ | n<1 = error "divide with non-positive length"
 divide _ []      = []
 divide n xs      = let (hs,ts) = splitAt n xs in hs : divide n ts
-
