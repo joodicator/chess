@@ -4,22 +4,31 @@ module ChessRules where
 import Control.Monad
 import Control.Applicative
 import Data.Maybe
+import Data.Char
 
 import ChessData
 import ChessBoard
-import {-# SOURCE #-} ChessText
 
 --------------------------------------------------------------------------------
 initialBoard :: Board
-initialBoard = readBoardLines [
+initialBoard = readBoard [
     "R N B Q K B N R",
     "P P P P P P P P",
-    ", . , . , . , .",
-    ". , . , . , . ,",
-    ", . , . , . , .",
-    ". , . , . , . ,",
+    "+ . + . + . + .",
+    ". + . + . + . +",
+    "+ . + . + . + .",
+    ". + . + . + . +",
     "p p p p p p p p",
     "r n b q k b n r"]
+  where
+    readBoard b = fromList [
+        (i, readPiece c) |
+        (i,c) <- zip [(r,f) | r <- ranks, f <- files]
+                     [c | r <- reverse b, c <- r, not (isSpace c)]]
+    readPiece c = lookup c [
+        (y,(c,p)) |
+        (x,p) <- zip "PRNBQK" [Pawn,Rook,Knight,Bishop,Queen,King],
+        (y,c) <- [(toUpper x, Black), (toLower x, White)]]
 
 initialGame :: Game
 initialGame = Game{gBoard=initialBoard, gTurn=White, gMoves=[]}

@@ -31,13 +31,14 @@ showMove' :: Bool -> Board -> Move -> String
 showMove' long d Move{mPath=t@(i,j), mCapture=mpc}
   = piece ++ fromMaybe (showIndex i) (guard (not long) >> from) ++ to
   where
-    piece = maybe "" (\(_,p) -> if p==Pawn then "" else [showPiece p]) (d!i)
-    from  = fmap (\(c,p) -> showMovePrefix' d (c,p,t,mpc)) (d!i)
-    to    = maybe "" (const "x") mpc ++ showIndex j
+    piece        = maybe "" piece' (d!i)
+    piece' (_,p) = if p == Pawn then "" else [showPieceLetter p]
+    from         = fmap (\(c,p) -> showMovePrefix' d (c,p,t,mpc)) (d!i)
+    to           = maybe "" (const "x") mpc ++ showIndex j
 showMove' long d Passant{mPath=t}
   = showMove' long d Move{mPath=t, mCapture=Just Pawn} ++ "e.p."
 showMove' long d Promote{mPath=t, mCapture=mpc, mPromote=pp}
-  = showMove' long d Move{mPath=t, mCapture=mpc} ++ [showPiece pp]
+  = showMove' long d Move{mPath=t, mCapture=mpc} ++ [showPieceLetter pp]
 showMove' _ _ Castle{mKing=((_,fi),(_,fj))}
   | fj < fi   = "0-0-0"
   | otherwise = "0-0"
@@ -74,9 +75,9 @@ readMoveSpec Game{gBoard=d, gTurn=pc} s
   where
     move :: String -> Maybe (UserErrorE ExMoveSpec)
     move s = do
-        (mip,s)        <- trimE (option $ char readPieceCS) s
+        (mip,s)        <- trimE (option $ char readPieceLetter) s
         ((mi,j,isC),s) <- moveFrom s <|> moveTo (Nothing,Nothing) s
-        (mpp,s)        <- trimS (option $ char readPieceCS) s
+        (mpp,s)        <- trimS (option $ char readPieceLetter) s
         (mIsP,s)       <- trimS (option $ word "e.p.") s
         (_,[])         <- space s
         return (move' (mi,j,mip,mpp,isC,isJust mIsP))
@@ -179,7 +180,8 @@ readFileIndex :: Char -> Maybe File
 readFileIndex = flip lookup (map swap fileChars)
 
 --------------------------------------------------------------------------------
-pieceMap = [
+letterPieces :: [(Char, Piece)]
+letterPieces = [
     ('P',Pawn),
     ('R',Rook),
     ('N',Knight),
@@ -187,49 +189,23 @@ pieceMap = [
     ('Q',Queen),
     ('K',King)]
 
-showPiece :: Piece -> Char
-showPiece p = fromJust $ lookup p (map swap pieceMap)
+figurePieces :: [(Char, (Colour,Piece))]
+figurePieces = [
+    ('♙', (White,Pawn)),    ('♟', (Black,Pawn)),
+    ('♖', (White,Rook)),    ('♜', (Black,Rook)),
+    ('♘', (White,Knight)),  ('♞', (Black,Knight)),
+    ('♗', (White,Bishop)),  ('♝', (Black,Bishop)),
+    ('♕', (White,Queen)),   ('♛', (Black,Queen)),
+    ('♔', (White,King)),    ('♚', (Black,King))]
 
-readPiece :: Char -> Maybe Piece
-readPiece = readPieceCS . toUpper
+showPieceLetter :: Piece -> Char
+showPieceLetter = fromJust . flip lookup (map swap letterPieces)
 
-readPieceCS :: Char -> Maybe Piece
-readPieceCS c = lookup c pieceMap
+showPieceFigure :: (Colour,Piece) -> Char
+showPieceFigure = fromJust . flip lookup (map swap figurePieces)
 
---------------------------------------------------------------------------------
-showEmptySquare :: Index -> Char
-showEmptySquare = showEmptySquare' . squareColour
-
-showEmptySquare' :: Colour -> Char
-showEmptySquare' Black = ' '
-showEmptySquare' White = ' '
-
-showColourPiece :: (Colour,Piece) -> Char
-showColourPiece (c,p)
-  = case c of
-      Black -> toUpper (showPiece p)
-      White -> toLower (showPiece p)
-
-showSquare :: Index -> Maybe (Colour,Piece) -> Char
-showSquare i = maybe (showEmptySquare i) showColourPiece
-
-readSquare :: Char -> Maybe (Colour,Piece)
-readSquare c
-  = fmap readSquare' (readPiece c)
-  where
-    readSquare' p
-      | isUpper c = (Black,p)
-      | otherwise = (White,p)
-
---------------------------------------------------------------------------------
-readBoard :: String -> Board
-readBoard = readBoardLines . lines
-
-readBoardLines :: [String] -> Board
-readBoardLines lines = fromList $ do
-    (r,line) <- zip (reverse ranks) lines
-    (f,char) <- zip files (filter (not . (`elem` "[ ]")) line)
-    return ((r,f), readSquare char)
+readPieceLetter :: Char -> Maybe Piece
+readPieceLetter = flip lookup letterPieces
 
 --------------------------------------------------------------------------------
 showGame :: Game -> Out String
@@ -265,7 +241,7 @@ showGameLines game@Game{gBoard=board, gTurn=pc, gMoves=moves}
     noteLine c     = if c==pc then playerLine else opponentLine
     captureLine c  = case filter (\(c',_) -> c' /= c) (capturedPieces game) of
         [] -> ""
-        cs -> "Captured: " ++ reverse (map showColourPiece cs)
+        cs -> "Captured: " ++ reverse (map showPieceFigure cs)
     playerLine = case (canMove game, inCheck game) of
         (True, False)  -> show pc ++ " to play."
         (True, True)   -> show pc ++ " to play (in check)."
@@ -287,21 +263,26 @@ showBoardLines' pc marked d o
     bottomRow  = "└" ++ intercalate "┴" (map (const "───") files) ++ "┘"
     rankRows   = map rankRow $ case pc of Black -> ranks; White -> reverse ranks
     edge       = colour (DGrey,Nothing)
-    rankRow  r = "│ " ++ intercalate " │ " (rankRow' r) ++ " │"
+    rankRow  r = "│" ++ intercalate "│" (rankRow' r) ++ "│"
     rankRow' r = do
         f <- case pc of Black -> reverse files; White -> files
         let mcp = (d ! (r,f))
         return $! if (r,f) `elem` marked
-            then colour (LRed,Nothing) [showSquare (r,f) mcp] o
+            then colour (LRed,Nothing) (showSquare (r,f) mcp) o
             else showSquareOut (r,f) mcp o
 
 showSquareOut :: Index -> Maybe (Colour,Piece) -> Out String
-showSquareOut i mcp
-  = style [showSquare i mcp]
-  where
-    style = case mcp of
-        Nothing -> colour (DGrey,Nothing)
-        Just _  -> plain
+showSquareOut i mcp = plain $ showSquare i mcp
+
+showSquare :: Index -> Maybe (Colour,Piece) -> String
+showSquare i mcp
+  = maybe (showEmptySquare i) (\cp -> [' ',showPieceFigure cp,' ']) mcp
+
+showEmptySquare :: Index -> String
+showEmptySquare i
+  = case squareColour i of
+        Black -> "   "
+        White -> "   "
 
 --------------------------------------------------------------------------------
 joinColumns :: Out [[String]] -> Out [String]
