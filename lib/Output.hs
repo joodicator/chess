@@ -53,7 +53,7 @@ ircCC' = reverse . take 2 . (++ repeat '0') . reverse . show . ircCC
 
 ircCC :: OColour -> Int
 ircCC c = case c of
-    LRed     -> 04;    LYellow  -> 08;    LGreen   -> 09;    LCyan    -> 14;
+    LRed     -> 04;    LYellow  -> 08;    LGreen   -> 09;    LCyan    -> 11;
     DRed     -> 05;    DYellow  -> 07;    DGreen   -> 03;    DCyan    -> 10;
     LBlue    -> 12;    LMagenta -> 13;    LGrey    -> 15;    OWhite   -> 00;
     DBlue    -> 02;    DMagenta -> 06;    DGrey    -> 14;    OBlack   -> 01
