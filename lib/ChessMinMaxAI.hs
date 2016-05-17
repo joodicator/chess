@@ -1,5 +1,7 @@
 --------------------------------------------------------------------------------
-module ChessMinMaxAI where
+module ChessMinMaxAI(
+    Value(..), SearchState(..),
+    minMaxPlay, minMaxPlay', minMaxPlay'', bestMove', bestMove'') where
 
 import qualified Data.Set as S
 import Data.Function
